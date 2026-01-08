@@ -6,10 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "typclingo"
 authors = [{ name = "Roland Kaminski", email = "kaminski@cs.uni-potsdam.de" }]
 description = "A template project."
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dynamic = ["version"]
 readme = "README.md"
+dependencies = ["clingo>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/potassco/typclingo/"
@@ -39,20 +40,27 @@ line_length = 120
 [tool.black]
 line-length = 120
 
+[tool.pylint.main]
+ignored-modules = ["clingo"]
+
+[tool.pylint."messages control"]
+disable = ["arguments-out-of-order"]
+
 [tool.pylint.format]
 max-line-length = 120
 
 [tool.pylint.design]
-max-args = 10
-max-attributes = 7
-max-bool-expr = 5
-max-branches = 12
-max-locals = 30
-max-parents = 7
-max-public-methods = 20
-max-returns = 10
-max-statements = 50
+max-args = 100
+max-attributes = 100
+max-bool-expr = 100
+max-branches = 100
+max-locals = 100
+max-parents = 100
+max-public-methods = 100
+max-returns = 100
+max-statements = 100
 min-public-methods = 1
+max-module-lines = 2000
 
 [tool.pylint.similarities]
 ignore-comments = true
@@ -63,6 +71,7 @@ ignore-signatures = true
 [tool.pylint.basic]
 argument-rgx = "^[a-z][a-z0-9]*((_[a-z0-9]+)*_?)?$"
 variable-rgx = "^[a-z][a-z0-9]*((_[a-z0-9]+)*_?)?$"
+typealias-rgx = "^[A-Z][a-z0-9]*((_[a-z0-9]+)*_?)?$"
 good-names = ["_"]
 
 [tool.coverage.run]
@@ -71,3 +80,9 @@ omit = ["*/typclingo/__main__.py"]
 
 [tool.coverage.report]
 exclude_lines = ["assert", "nocoverage"]
+
+[tool.ruff]
+ignore = ["E741"]  # ambiguous-variable-name (l, O, I)
+
+[tool.pyright]
+reportMissingModuleSource = "none"

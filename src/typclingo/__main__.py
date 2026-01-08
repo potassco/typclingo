@@ -2,25 +2,16 @@
 The main entry point for the application.
 """
 
-import sys
+from .app import TypeClingo
 
-from .utils.logging import configure_logging, get_logger
-from .utils.parser import get_parser
+__all__ = ["main"]
 
 
 def main() -> None:
     """
-    Run the main function.
+    Run the TypeClingo application.
     """
-    parser = get_parser()
-    args = parser.parse_args()
-    configure_logging(sys.stderr, args.log, sys.stderr.isatty())
-
-    log = get_logger("main")
-    log.info("info")
-    log.warning("warning")
-    log.debug("debug")
-    log.error("error")
+    TypeClingo().run()
 
 
 if __name__ == "__main__":
