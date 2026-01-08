@@ -1,41 +1,41 @@
 # typclingo
 
-> Remove this block after following the instructions below to use the template.
->
-> This project template is configured to ease collaboration. Linters,
-> formatters, and actions are already configured and ready to use.
->
-> To use the project template, run the `init.py` script to give the project a
-> name and some metadata. The script can then be removed and the
-> `pyproject.toml` file be adjusted as needed.
-
 ## Installation
 
-To install the project, run
+To install the project without checking out the repository, run
 
 ```bash
-pip install .
+python -m venv potassco
+source potassco/bin/activate
+pip install --extra-index-url=https://test.pypi.org/simple git+https://github.com/potassco/typclingo.git
 ```
+
+For ssh you can use
+
+```bash
+python -m venv potassco
+source potassco/bin/activate
+pip install --extra-index-url=https://test.pypi.org/simple git+ssh://git@github.com/potassco/typclingo.git
+```
+
+Note that the repository is private at the moment, you have to setup some
+password or access token to use it.
 
 ## Usage
 
-Run the following for basic usage information:
+Currently, typclingo has no options and just reads from stdin:
 
 ```bash
-typclingo -h
-```
-
-To generate and open the documentation, run
-
-```bash
-mkdocs serve -o
-```
-
-Make sure to install the optional documentation dependencies via
-
-```bash
-pip install .[doc]
+cat [files] | typclingo
 ```
 
 Instructions to install and use `nox` can be found in
 [DEVELOPMENT.md](./DEVELOPMENT.md)
+
+## Examples
+
+```bash
+cat examples/test.lp | typclingo
+cat examples/queens.lp | typclingo
+cat examples/.lp | typclingo
+```
