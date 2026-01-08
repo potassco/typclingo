@@ -3,7 +3,6 @@ Type specification for typclingo.
 """
 
 from dataclasses import dataclass, field
-
 from enum import Enum
 from functools import singledispatch
 
@@ -11,6 +10,7 @@ __all__ = [
     "BOT",
     "FunctionCons",
     "Predicate",
+    "Program",
     "Type",
     "TypeCons",
     "TypeDef",
@@ -159,6 +159,23 @@ class Predicate:
         return f"pred {self.name}."
 
 
+@dataclass
+class Program:
+    """
+    Type annotation for a program part.
+
+    A program part has a name and zero or more type arguments.
+    """
+
+    name: str
+    args: list[Type]
+
+    def __str__(self) -> str:
+        if self.args:
+            return f"prog {self.name}(" + ",".join(str(a) for a in self.args) + ")."
+        return f"prog {self.name}."
+
+
 class Graph:
     """
     A simple directed graph to check for cycles.
@@ -227,6 +244,7 @@ class TypeSpec:
 
     _types: dict[str, TypeDef] = field(default_factory=_default_types)
     _preds: dict[tuple[str, int], Predicate] = field(default_factory=dict)
+    _progs: dict[tuple[str, int], Program] = field(default_factory=dict)
 
     def add_type_def(self, td: TypeDef) -> None:
         """
@@ -242,10 +260,17 @@ class TypeSpec:
         """
         signature = (pred.name, len(pred.args))
         if signature in self._preds:
-            raise ValueError(
-                f"Predicate '{pred.name}/{len(pred.args)}' already defined"
-            )
+            raise ValueError(f"Predicate '{pred.name}/{len(pred.args)}' already defined")
         self._preds[signature] = pred
+
+    def add_prog(self, prog: Program) -> None:
+        """
+        Add a predicate type annotation.
+        """
+        signature = (prog.name, len(prog.args))
+        if signature in self._progs:
+            raise ValueError(f"Program '{prog.name}/{len(prog.args)}' already defined")
+        self._progs[signature] = prog
 
     def get_type_def(self, name: str) -> TypeDef:
         """
@@ -260,6 +285,12 @@ class TypeSpec:
         Get the predicate type annotation for the given name and arity.
         """
         return self._preds.get((name, arity), None)
+
+    def get_prog(self, name: str, arity: int) -> Program | None:
+        """
+        Get the program type annotation for the given name and arity.
+        """
+        return self._progs.get((name, arity), None)
 
     def check(self) -> None:
         """
@@ -307,5 +338,5 @@ class TypeSpec:
 
     def __str__(self) -> str:
         return "\n".join(
-            str(t) for t in list(self._types.values()) + list(self._preds.values())
+            str(t) for t in list(self._types.values()) + list(self._progs.values()) + list(self._preds.values())
         )

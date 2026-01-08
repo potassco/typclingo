@@ -18,9 +18,7 @@ def dev(session):
 
     Activate it by running `source .nox/dev/bin/activate`.
     """
-    session.install(
-        "--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[dev]"
-    )
+    session.install("--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[dev]")
 
 
 @nox.session
@@ -28,9 +26,7 @@ def lint_pylint(session):
     """
     Run pylint.
     """
-    session.install(
-        "--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[lint_pylint]"
-    )
+    session.install("--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[lint_pylint]")
     session.run("pylint", "typclingo", "tests", "--fail-under=0")
 
 
@@ -39,9 +35,7 @@ def typecheck(session):
     """
     Typecheck the code using mypy.
     """
-    session.install(
-        "--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[typecheck]"
-    )
+    session.install("--extra-index-url", "https://test.pypi.org/simple/", "-e", ".[typecheck]")
     session.run("mypy", "--strict", "-p", "typclingo", "-p", "tests")
 
 

@@ -3,18 +3,18 @@ A parser for type specifications.
 """
 
 import re
-
 from typing import NoReturn
 
 from .spec import (
-    TypeSpec,
-    TypeDef,
-    TypeRelation,
+    FunctionCons,
+    Predicate,
+    Program,
     Type,
     TypeCons,
-    FunctionCons,
+    TypeDef,
+    TypeRelation,
+    TypeSpec,
     UnionCons,
-    Predicate,
 )
 
 __all__ = ["Parser"]
@@ -160,7 +160,7 @@ class Parser:
         self.consume(".")
         return TypeDef(lhs, rel, rhs)
 
-    def parse_pred(self) -> Predicate:
+    def _pred(self) -> tuple[str, list[Type]]:
         """
         Parse a predicate type annotation.
         """
@@ -173,7 +173,19 @@ class Parser:
                     args.append(self.parse_type())
             self.consume(")")
         self.consume(".")
-        return Predicate(name, args)
+        return name, args
+
+    def parse_pred(self) -> Predicate:
+        """
+        Parse a predicate type annotation.
+        """
+        return Predicate(*self._pred())
+
+    def parse_prog(self) -> Program:
+        """
+        Parse a program type annotation.
+        """
+        return Program(*self._pred())
 
     def parse(self, spec: TypeSpec) -> None:
         """
@@ -185,6 +197,8 @@ class Parser:
                 spec.add_type_def(self.parse_type_def())
             elif self.branch("pred"):
                 spec.add_pred(self.parse_pred())
+            elif self.branch("prog"):
+                spec.add_prog(self.parse_prog())
             else:
                 self.consume("*%", gobble=True)
                 break

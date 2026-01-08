@@ -36,18 +36,18 @@ TODO:
 - Better support for pools.
 """
 
-from sys import stderr
 from functools import singledispatchmethod
+from sys import stderr
 
 from ..spec import (
-    TypeSpec,
-    TypeRelation,
-    Type,
+    BOT,
     FunctionCons,
+    Type,
     TypeCons,
+    TypeRelation,
+    TypeSpec,
     TypeVar,
     UnionCons,
-    BOT,
 )
 
 __all__ = ["TypeChecker"]
@@ -56,22 +56,19 @@ __all__ = ["TypeChecker"]
 class TypeChecker:
     """
     A type checker for ASP programs.
+
+    The type checker uses a type specification to check types of previously
+    added constraints.
     """
 
     constraints: list[tuple[Type, Type]]
     spec: TypeSpec
-    type_map: dict[str, TypeVar]
     env: dict[str, Type]
-    glob: set[str]
-    scope: int
 
-    def __init__(self, spec: TypeSpec, glob: set[str]):
+    def __init__(self, spec: TypeSpec):
         self.constraints = []
         self.spec = spec
-        self.type_map = {}
         self.env = {}
-        self.glob = glob
-        self.scope = 0
 
     def simplify_type(self, x: Type) -> Type:
         """
@@ -82,8 +79,7 @@ class TypeChecker:
             for y in x.opts:
                 y = self.simplify_type(y)
                 if isinstance(y, UnionCons):
-                    if y != BOT:
-                        opts.append(y)
+                    opts.extend(y.opts)
                 else:
                     opts.append(y)
 
@@ -180,14 +176,10 @@ class TypeChecker:
             if rhs.name in ("Symbol", lhs.name):
                 return True
             td_rhs = self.spec.get_type_def(rhs.name)
-            return td_rhs.rel == TypeRelation.EQUAL and self.subtype(
-                lhs, td_rhs.type, env
-            )
+            return td_rhs.rel == TypeRelation.EQUAL and self.subtype(lhs, td_rhs.type, env)
 
         assert isinstance(rhs, (UnionCons, FunctionCons))
-        return isinstance(rhs, UnionCons) and any(
-            self.subtype(lhs, x, env) for x in rhs.opts
-        )
+        return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env) for x in rhs.opts)
 
     def meet(self, lhs: Type, rhs: Type, env: dict[str, Type]) -> Type:
         """
@@ -285,20 +277,6 @@ class TypeChecker:
         if any(a == BOT for a in args):
             return BOT
         return FunctionCons(lhs.name, args)
-
-    def add_variable(self, name: str) -> Type:
-        """
-        Add a variable to the type checker.
-
-        This either returns an existing type variable for the given name or
-        adds a new one. In case of anonymous variables "_", we simply use the
-        most general type "Symbol".
-        """
-        if name == "_":
-            return TypeCons("Symbol")
-        if name not in self.glob:
-            name = f"{name}@{self.scope}"
-        return self.type_map.setdefault(name, TypeVar(name))
 
     def solve(self) -> None:
         """

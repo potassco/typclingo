@@ -2,8 +2,8 @@
 Utilities for typeclingo.
 """
 
-from typing import Any
 from functools import singledispatch
+from typing import Any
 
 from clingo import ast
 
