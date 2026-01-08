@@ -37,5 +37,5 @@ Instructions to install and use `nox` can be found in
 ```bash
 cat examples/test.lp | typclingo
 cat examples/queens.lp | typclingo
-cat examples/.lp | typclingo
+cat examples/test.lp | typclingo
 ```
