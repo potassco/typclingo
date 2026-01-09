@@ -23,10 +23,10 @@ password or access token to use it.
 
 ## Usage
 
-Currently, typclingo has no options and just reads from stdin:
+To enable type checking, pass option `--type-check` to `typclingo`:
 
 ```bash
-cat [files] | typclingo
+typclingo --type-check <options> <files>
 ```
 
 Instructions to install and use `nox` can be found in
@@ -35,7 +35,7 @@ Instructions to install and use `nox` can be found in
 ## Examples
 
 ```bash
-cat examples/test.lp | typclingo
-cat examples/queens.lp | typclingo
-cat examples/test.lp | typclingo
+typclingo --type-check examples/queens.lp
+typclingo --type-check examples/meta.lp
+typclingo --type-check  --log-level-types=debug test.lp
 ```

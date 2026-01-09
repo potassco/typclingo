@@ -36,7 +36,7 @@ TODO:
 - Better support for pools.
 """
 
-from sys import stderr
+import logging
 from typing import Iterable
 
 from clingo import ast
@@ -51,12 +51,18 @@ from ..spec import (
     UnionCons,
 )
 from ..utils.ast import get_global
+from ..utils.logging import LazyStr
 from .core import TypeChecker
 
 __all__ = ["check_stm"]
+logger = logging.getLogger(__name__)
 
 
 class ClingoChecker(TypeChecker):
+    """
+    A type checker for Clingo AST nodes.
+    """
+
     type_map: dict[str, TypeVar]
     glob: set[str]
     scope: int
@@ -188,7 +194,7 @@ class ClingoChecker(TypeChecker):
                 t_pred = self.simplify_type(UnionCons(opts))
                 self.constraints.append((t_atom, t_pred))
             else:
-                stderr.write("Warning: symbolic terms and classically negated atoms are not yet supported\n")
+                logger.warning("symbolic terms and classically negated atoms are not yet supported")
         else:
             assert isinstance(lit, ast.LiteralComparison)
             t_lhs = self.add_term(lit.left)
@@ -251,7 +257,7 @@ class ClingoChecker(TypeChecker):
             self.add_lit(blit.literal)
         else:
             assert isinstance(blit, ast.BodyTheoryAtom)
-            stderr.write("Warning: theory atoms are not yet supported\n")
+            logger.warning("theory atoms are not yet supported")
 
     def add_hlit(self, hlit: ast.HeadLiteral) -> None:
         """
@@ -281,7 +287,7 @@ class ClingoChecker(TypeChecker):
             self.add_saggr(hlit)
         else:
             isinstance(hlit, ast.HeadTheoryAtom)
-            stderr.write("Warning: theory atoms are not yet supported\n")
+            logger.warning("theory atoms are not yet supported")
 
 
 class ParamHolder:
@@ -301,7 +307,7 @@ class ParamHolder:
             if const.name in params:
                 p = params[const.name][1]
                 if p == const.precedence:
-                    stderr.write("Error: conflicting constant parameter definitions\n")
+                    logger.error("conflicting constant parameter definitions")
                 elif p < const.precedence:
                     params[const.name] = (const.value, const.precedence)
             else:
@@ -314,12 +320,13 @@ class ParamHolder:
         checker = ClingoChecker(spec, set(), tvars)
         for name, (value, _) in params.items():
             checker.constraints.append((tvars[name], checker.add_term(value)))
-        checker.solve()
+        if not checker.solve():
+            logger.error("could not compute types for constant parameters")
         if tvars:
-            print("***** Checking const statements ******")
+            logger.debug("checking const statements")
             for name, typ in tvars.items():
                 typ = checker.simplify_type(checker.expand_type(typ))
-                print(f"{name} : {typ}")
+                logger.debug("  %s : %s", name, typ)
                 self.const_params[name] = typ
 
     def set_prog(self, params: Iterable[tuple[str, Type]]) -> None:
@@ -342,6 +349,7 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
     """
     Add a statement to the type self.
     """
+    # pylint: disable=cell-var-from-loop
     if isinstance(
         stm,
         (
@@ -359,30 +367,37 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         else:
             params.set_prog(zip(stm.arguments, [TypeCons("Symbol")] * len(stm.arguments)))
     elif isinstance(stm, ast.StatementShow):
-        print("***** Checking show statement ******")
+        logger.debug("checking %s", stm)
         glob = get_global(stm)
         checker = ClingoChecker(spec, glob, params.get_params())
         checker.constraints.append((checker.add_term(stm.term), TypeCons("Symbol")))
         for blit in stm.body:
             checker.add_blit(blit)
-        checker.solve()
-        print(f"{stm}")
-        print("inferred types:")
+        if not checker.solve():
+            logger.error("checking failed for %s", stm)
+
         for name, typ in checker.type_map.items():
-            print(f"  {name} : {checker.simplify_type(checker.expand_type(typ))}")
+            logger.debug(
+                "  %s : %s",
+                name,
+                LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),
+            )
 
     elif isinstance(stm, ast.StatementRule):
-        print("********** Checking rule ***********")
+        logger.debug("checking %s", stm)
         glob = get_global(stm)
         checker = ClingoChecker(spec, glob, params.get_params())
         checker.add_hlit(stm.head)
         for blit in stm.body:
             checker.add_blit(blit)
-        checker.solve()
-        print(f"{stm}")
-        print("inferred types:")
+        if not checker.solve():
+            logger.error("checking failed for %s", stm)
         for name, typ in checker.type_map.items():
-            print(f"  {name} : {checker.simplify_type(checker.expand_type(typ))}")
+            logger.debug(
+                "  %s : %s",
+                name,
+                LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),
+            )
     else:
         # TODO: it should be simple to add more statement types here
-        stderr.write("Warning: only a limited set of statements is supported\n")
+        logger.warning("only a limited set of statements is supported")

@@ -36,8 +36,8 @@ TODO:
 - Better support for pools.
 """
 
+import logging
 from functools import singledispatchmethod
-from sys import stderr
 
 from ..spec import (
     BOT,
@@ -51,6 +51,7 @@ from ..spec import (
 )
 
 __all__ = ["TypeChecker"]
+logger = logging.getLogger(__name__)
 
 
 class TypeChecker:
@@ -278,12 +279,16 @@ class TypeChecker:
             return BOT
         return FunctionCons(lhs.name, args)
 
-    def solve(self) -> None:
+    def solve(self) -> bool:
         """
         Solve previously recorded type constraints.
 
         Can be used incrementally after adding constraints.
         """
+        res = True
         for lhs, rhs in self.constraints:
             if self.simplify_type(self.meet(lhs, rhs, self.env)) == BOT:
-                stderr.write(f"Error: unsolvable type constraints: {lhs} = {rhs}\n")
+                res = False
+                logger.error("unsolvable type constraints: %s = %s", lhs, rhs)
+
+        return res
