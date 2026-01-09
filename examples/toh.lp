@@ -20,6 +20,11 @@ prog check(Time).
 #include <incmode>.
 
 #program base.
+disk(1..4).
+peg(a;b;c).
+init_on(1..4,a).
+goal_on(1..4,c).
+
 on(D,P,0) :- init_on(D,P).
 
 #program step(t).

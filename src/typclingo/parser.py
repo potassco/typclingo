@@ -6,6 +6,7 @@ import re
 from typing import NoReturn
 
 from .spec import (
+    External,
     FunctionCons,
     Predicate,
     Program,
@@ -187,6 +188,23 @@ class Parser:
         """
         return Program(*self._pred())
 
+    def parse_func(self) -> External:
+        """
+        Parse an external function type annotation.
+        """
+        name = self.lid()
+        args = []
+        self.consume("(")
+        if not self.branch(")"):
+            args.append(self.parse_type())
+            while self.branch(","):
+                args.append(self.parse_type())
+            self.consume(")")
+        self.consume("->")
+        result = self.parse_type()
+        self.consume(".")
+        return External(name, args, result)
+
     def parse(self, spec: TypeSpec) -> None:
         """
         Parse a type specification.
@@ -200,7 +218,7 @@ class Parser:
             elif self.branch("prog"):
                 spec.add_prog(self.parse_prog())
             elif self.branch("func"):
-                raise NotImplementedError("Function type annotations are not implemented yet")
+                spec.add_func(self.parse_func())
             else:
                 self.consume("*%", gobble=True)
                 break

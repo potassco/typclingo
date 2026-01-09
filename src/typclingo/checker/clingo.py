@@ -128,12 +128,6 @@ class ClingoChecker(TypeChecker):
             self.constraints.append((rhs, typ))
             return typ
         if isinstance(term, ast.TermFunction):
-            if term.external:
-                # TODO:
-                # - external functions need type annotations
-                # - we can inject the return type of the function and add
-                #   constraints for the arguments
-                raise NotImplementedError("external functions are not supported yet")
             # NOTE:
             # - using the pool here is not the most useful way to implement this
             # - it might be better to unpool beforhand to ensure that each
@@ -146,19 +140,31 @@ class ClingoChecker(TypeChecker):
                         t_args.append(TypeCons("Symbol"))
                     else:
                         t_args.append(self.add_term(x))
-                if not protect_pred and not t_args and term.name in self.params:
-                    opts.append(self.params[term.name])
+                if term.external:
+                    f_args: list[Type] = []
+                    if func := self.spec.get_func(term.name, len(t_args)):
+                        f_args = func.args
+                        opts.append(func.result)
+                    else:
+                        f_args = [TypeCons("Symbol")] * len(t_args)
+                        opts.append(TypeCons("Symbol"))
+                    self.constraints.extend(zip(t_args, f_args))
                 else:
-                    opts.append(FunctionCons(term.name, t_args))
+                    if not protect_pred and not t_args and term.name in self.params:
+                        opts.append(self.params[term.name])
+                    else:
+                        opts.append(FunctionCons(term.name, t_args))
             return self.simplify_type(UnionCons(opts))
         if isinstance(term, ast.TermSymbolic):
             return self.add_symbol(term.symbol, protect_pred)
 
         assert isinstance(term, (ast.TermFormatString, ast.TermTuple))
+
         # TODO:
         # - implement format strings and tuples
         # - maybe represent tuples as functions with an empty name
-        raise NotImplementedError(f"unhandled term: {term}")
+        logger.error("unhandled term: %s", term)
+        return TypeCons("Symbol")
 
     def add_symbol(self, sym: Symbol, protect_pred: bool = False) -> Type:
         """
@@ -349,10 +355,10 @@ class ParamHolder:
         if not checker.solve():
             logger.error("could not compute types for constant parameters")
         if tvars:
-            logger.debug("checking const statements")
+            logger.info("checking const statements")
             for name, typ in tvars.items():
                 typ = checker.simplify_type(checker.expand_type(typ))
-                logger.debug("  %s : %s", name, typ)
+                logger.info("  %s : %s", name, typ)
                 self.const_params[name] = typ
 
     def set_prog(self, params: Iterable[tuple[str, Type]]) -> None:
@@ -398,7 +404,7 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         else:
             params.set_prog(zip(stm.arguments, [TypeCons("Symbol")] * len(stm.arguments)))
     elif isinstance(stm, ast.StatementParts):
-        logger.debug("checking %s", stm)
+        logger.info("checking %s", stm)
         res = True
         for part in stm.elements:
             if prog := spec.get_prog(part.name, len(part.arguments)):
@@ -411,7 +417,7 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         if not res:
             logger.error("checking failed for %s", stm)
     else:
-        logger.debug("checking %s", stm)
+        logger.info("checking %s", stm)
         glob = get_global(stm)
         checker = ClingoChecker(spec, glob, params.get_params())
         if isinstance(stm, ast.StatementRule):
@@ -481,7 +487,7 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         if not checker.solve():
             logger.error("checking failed for %s", stm)
         for name, typ in checker.type_map.items():
-            logger.debug(
+            logger.info(
                 "  %s : %s",
                 name,
                 LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),

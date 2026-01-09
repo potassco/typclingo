@@ -145,7 +145,7 @@ class TypeChecker:
             return all(self.subtype(x, rhs, env) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons) and isinstance(rhs, TypeCons):
-            if rhs.name in ("Symbol", "Function"):
+            if rhs.name in ("Top", "Function"):
                 return True
             td = self.spec.get_type_def(rhs.name)
             return td.rel == TypeRelation.EQUAL and self.subtype(lhs, td.type, env)
@@ -161,7 +161,7 @@ class TypeChecker:
 
         # unfold lhs type definition
         td_lhs = self.spec.get_type_def(lhs.name)
-        if lhs.name != "Symbol":
+        if lhs.name != "Top":
             # check transitively first
             if self.subtype(td_lhs.type, rhs, env):
                 return True
@@ -171,10 +171,10 @@ class TypeChecker:
             if td_lhs.rel == TypeRelation.EQUAL:
                 return False
 
-        assert lhs.name == "Symbol" or td_lhs.rel == TypeRelation.SUBTYPE
+        assert lhs.name == "Top" or td_lhs.rel == TypeRelation.SUBTYPE
 
         if isinstance(rhs, TypeCons):
-            if rhs.name in ("Symbol", lhs.name):
+            if rhs.name in ("Top", lhs.name):
                 return True
             td_rhs = self.spec.get_type_def(rhs.name)
             return td_rhs.rel == TypeRelation.EQUAL and self.subtype(lhs, td_rhs.type, env)
@@ -182,7 +182,7 @@ class TypeChecker:
         assert isinstance(rhs, (UnionCons, FunctionCons))
         return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env) for x in rhs.opts)
 
-    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type]) -> Type:
+    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type], direct: bool = False) -> Type:
         """
         Compute the meet of two types.
 
@@ -195,27 +195,36 @@ class TypeChecker:
         with $X=Number. The type variable X is refined when computing the meet
         of Symbol and Number.
         """
+        if logger.isEnabledFor(logging.DEBUG):
+            slhs = str(lhs)
+            srhs = str(rhs)
+        else:
+            slhs = srhs = ""
+
+        def debug(res: Type) -> Type:
+            logger.debug("    %s ⊓ %s = %s", slhs, srhs, res)
+            return res
 
         if isinstance(rhs, TypeCons):
             td = self.spec.get_type_def(rhs.name)
-            if rhs.name == "Symbol":
-                return lhs
+            if rhs.name == "Top":
+                return debug(lhs) if not direct or lhs == rhs else BOT
             if td.rel == TypeRelation.EQUAL:
-                return self.meet(lhs, td.type, env)
+                return debug(self.meet(lhs, td.type, env, direct))
 
         if isinstance(lhs, TypeCons):
             td = self.spec.get_type_def(lhs.name)
-            if lhs.name == "Symbol":
-                return rhs
+            if lhs.name == "Top":
+                return debug(rhs) if not direct or lhs == rhs else BOT
             if td.rel == TypeRelation.EQUAL:
-                return self.meet(td.type, rhs, env)
+                return debug(self.meet(td.type, rhs, env, direct))
 
         if isinstance(rhs, UnionCons):
             opts = []
             sub = []
             for opt in rhs.opts:
                 sub.append(env.copy())
-                opts.append(self.meet(opt, lhs, sub[-1]))
+                opts.append(self.meet(opt, lhs, sub[-1], direct))
 
             # merge subenvironments
             for subenv in sub:
@@ -224,60 +233,61 @@ class TypeChecker:
                     if old is None:
                         env[name] = new
                     elif old != new:
-                        env[name] = UnionCons([old, new])
+                        env[name] = self.simplify_type(UnionCons([old, new]))
 
-            return self.simplify_type(UnionCons(opts))
+            return debug(self.simplify_type(UnionCons(opts)))
 
         if isinstance(rhs, TypeVar):
             t_rhs = env.get(rhs.name, TypeCons("Symbol"))
-            res = self.meet(lhs, t_rhs, env)
+            res = self.meet(lhs, t_rhs, env, direct)
             env[rhs.name] = res
-            return res
+            return debug(res)
 
         if isinstance(lhs, (TypeVar, UnionCons)):
-            return self.meet(rhs, lhs, env)
+            return self.meet(rhs, lhs, env, direct)
 
         if isinstance(rhs, TypeCons):
             td_rhs = self.spec.get_type_def(rhs.name)
             assert td_rhs.rel != TypeRelation.EQUAL
             if isinstance(lhs, TypeCons):
-                # NOTE: subtype won't actually access the env here
+                # NOTE: subtype/meet won't actually access the env here
                 # because neither lhs nor rhs can contain type variables
                 td_lhs = self.spec.get_type_def(lhs.name)
                 assert td_lhs.rel != TypeRelation.EQUAL
-                if self.subtype(lhs, rhs, env):
-                    return lhs
-                if self.subtype(rhs, lhs, env):
-                    return rhs
+                if direct:
+                    if lhs == rhs:
+                        return lhs
+                else:
+                    if self.subtype(lhs, rhs, env):
+                        return debug(lhs)
+                    if self.subtype(rhs, lhs, env):
+                        return debug(rhs)
+                    # L <: M and R <: S
+                    #   if L directly meets S then R
+                    #   if R directly meets M then L
+                    if self.meet(lhs, td_rhs.type, env.copy(), True) != BOT:
+                        return debug(rhs)
+                    if self.meet(rhs, td_lhs.type, env.copy(), True) != BOT:
+                        return debug(lhs)
                 return BOT
             assert isinstance(lhs, FunctionCons)
-            # NOTE: given type L and R <: S , we define the meet of L and R
-            # equal R, if R and S are not in an explicit subtype relation. The
-            # motivation is that the following should be valid:
-            #   type S <: f(Number).
-            #   pred p(S).
-            #   p(f(1)).
-            # Here the meet of p(S) and p(f(Number)) is computed as p(S).
-            # However, the following program would not type check:
-            #   type S <: f(Number).
-            #   type R <: f(Number).
-            #   x :- p(S), p(R).
-            # Here the meet of p(S) and p(R) is Bot, as S and R are meant to be
-            # uncomparable in the type lattice.
-            if self.meet(lhs, td_rhs.type, env) != BOT:
-                return rhs
-            return BOT
+
+            if rhs.name == "Function":
+                return debug(lhs)
+            if self.meet(lhs, td_rhs.type, env, True) != BOT:
+                return debug(rhs)
+            return debug(BOT)
 
         if isinstance(lhs, TypeCons):
             return self.meet(rhs, lhs, env)
 
         assert isinstance(lhs, FunctionCons) and isinstance(rhs, FunctionCons)
         if lhs.name != rhs.name or len(lhs.args) != len(rhs.args):
-            return BOT
+            return debug(BOT)
         args = [self.meet(a, b, env) for a, b in zip(lhs.args, rhs.args)]
         if any(a == BOT for a in args):
-            return BOT
-        return FunctionCons(lhs.name, args)
+            return debug(BOT)
+        return debug(FunctionCons(lhs.name, args))
 
     def solve(self) -> bool:
         """
@@ -287,6 +297,7 @@ class TypeChecker:
         """
         res = True
         for lhs, rhs in self.constraints:
+            logger.debug("  solving type constraint: %s ⊓ %s", lhs, rhs)
             if self.simplify_type(self.meet(lhs, rhs, self.env)) == BOT:
                 res = False
                 logger.error("unsolvable type constraints: %s = %s", lhs, rhs)

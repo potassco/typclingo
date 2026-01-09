@@ -1,11 +1,11 @@
 %*?
 type Element <: Symbol.
 
-func gather(Element) -> Element.
-func sort() -> (Number,Element).
+func gather(Element) -> Number.
+func sort() -> t(Number,Element).
 
 pred p(Element).
-pred gather(Element).
+pred gather(Number).
 *%
 
 #script (python)
@@ -32,4 +32,4 @@ p(s(f)).
 gather(1).
 gather(@gather(X)) :- p(X).
 
-enumerate(X,N) :- gather(1), (X,N) = @sort().
+enumerate(X,N) :- gather(1), t(X,N) = @sort().

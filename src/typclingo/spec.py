@@ -8,6 +8,7 @@ from functools import singledispatch
 
 __all__ = [
     "BOT",
+    "External",
     "FunctionCons",
     "Predicate",
     "Program",
@@ -31,14 +32,14 @@ class TypeCons:
     types.
 
     The following type constructors are predefined:
-    - Symbol: The type of all symbols (the most generic Top type).
-    - Infimum: The type of the #inf symbol (subtype of Symbol).
-    - Supremum: The type of the #sup symbol (subtype of Symbol).
-    - Number: The type of all numbers (subtype of Symbol).
-    - String: The type of all strings (subtype of Symbol).
-    - Tuple: The type of all tuples (subtype of Symbol).
-    - Function: The type of all functions (includes constants; subtype of
-      Symbol).
+    - Top: The internal top type (supertype of all types; defined cyclically)
+    - Infimum: The type of the #inf symbol (suptype of Top)
+    - Supremum: The type of the #sup symbol (suptype of Top)
+    - Number: The type of all numbers (suptype of Top)
+    - String: The type of all strings (suptype of Top)
+    - Tuple: The type of all tuples (suptype of Top)
+    - Function: The type of all functions (includes constants; subtype of Top).
+    - Symbol: The type of all symbols (the union of the above types).
 
     # TODO
     More inbuild subtypes might be introduced in the future, e.g., for natural
@@ -160,6 +161,23 @@ class Predicate:
 
 
 @dataclass
+class External:
+    """
+    Type annotation for an external function.
+
+    An external function has a name, zero or more type arguments, and a result
+    type.
+    """
+
+    name: str
+    args: list[Type]
+    result: Type
+
+    def __str__(self) -> str:
+        return f"func {self.name}({','.join(str(a) for a in self.args)}) -> {str(self.result)}."
+
+
+@dataclass
 class Program:
     """
     Type annotation for a program part.
@@ -223,16 +241,30 @@ class TypeSpec:
 
     @staticmethod
     def _default_types() -> dict[str, TypeDef]:
-        # NOTE: that symbol is define cyclically here is intentional to avoid
-        # making the type optional
-        sym = TypeDef("Symbol", TypeRelation.EQUAL, TypeCons("Symbol"))
-        num = TypeDef("Number", TypeRelation.SUBTYPE, TypeCons("Symbol"))
-        fun = TypeDef("Function", TypeRelation.SUBTYPE, TypeCons("Symbol"))
-        tup = TypeDef("Tuple", TypeRelation.SUBTYPE, TypeCons("Symbol"))
-        inf = TypeDef("Infimum", TypeRelation.SUBTYPE, TypeCons("Symbol"))
-        sup = TypeDef("Supremum", TypeRelation.SUBTYPE, TypeCons("Symbol"))
-        string = TypeDef("String", TypeRelation.SUBTYPE, TypeCons("Symbol"))
+        # NOTE: cyclic definition are intentional here
+        top = TypeDef("Top", TypeRelation.SUBTYPE, TypeCons("Top"))
+        num = TypeDef("Number", TypeRelation.SUBTYPE, TypeCons("Top"))
+        fun = TypeDef("Function", TypeRelation.SUBTYPE, TypeCons("Top"))
+        tup = TypeDef("Tuple", TypeRelation.SUBTYPE, TypeCons("Top"))
+        inf = TypeDef("Infimum", TypeRelation.SUBTYPE, TypeCons("Top"))
+        sup = TypeDef("Supremum", TypeRelation.SUBTYPE, TypeCons("Top"))
+        string = TypeDef("String", TypeRelation.SUBTYPE, TypeCons("Top"))
+        sym = TypeDef(
+            "Symbol",
+            TypeRelation.EQUAL,
+            UnionCons(
+                [
+                    TypeCons("Number"),
+                    TypeCons("Function"),
+                    TypeCons("Tuple"),
+                    TypeCons("Infimum"),
+                    TypeCons("Supremum"),
+                    TypeCons("String"),
+                ]
+            ),
+        )
         return {
+            top.name: top,
             sym.name: sym,
             num.name: num,
             fun.name: fun,
@@ -245,6 +277,7 @@ class TypeSpec:
     _types: dict[str, TypeDef] = field(default_factory=_default_types)
     _preds: dict[tuple[str, int], Predicate] = field(default_factory=dict)
     _progs: dict[tuple[str, int], Program] = field(default_factory=dict)
+    _funcs: dict[tuple[str, int], External] = field(default_factory=dict)
 
     def add_type_def(self, td: TypeDef) -> None:
         """
@@ -265,12 +298,21 @@ class TypeSpec:
 
     def add_prog(self, prog: Program) -> None:
         """
-        Add a predicate type annotation.
+        Add a program type annotation.
         """
         signature = (prog.name, len(prog.args))
         if signature in self._progs:
             raise ValueError(f"Program '{prog.name}/{len(prog.args)}' already defined")
         self._progs[signature] = prog
+
+    def add_func(self, func: External) -> None:
+        """
+        Add an external function type annotation.
+        """
+        signature = (func.name, len(func.args))
+        if signature in self._progs:
+            raise ValueError(f"External function '{func.name}/{len(func.args)}' already defined")
+        self._funcs[signature] = func
 
     def get_type_def(self, name: str) -> TypeDef:
         """
@@ -292,13 +334,19 @@ class TypeSpec:
         """
         return self._progs.get((name, arity), None)
 
+    def get_func(self, name: str, arity: int) -> External | None:
+        """
+        Get the external function type annotation for the given name and arity.
+        """
+        return self._funcs.get((name, arity), None)
+
     def check(self) -> None:
         """
         Check the type specification for consistency.
         """
 
         graph = Graph()
-        parent = "Symbol"
+        parent = "Top"
 
         @singledispatch
         def dispatch(t: Type) -> None:
@@ -311,7 +359,7 @@ class TypeSpec:
             if t.name not in self._types:
                 raise ValueError(f"Type '{t.name}' not defined")
             # we skip symbol here because they are cyclically defined
-            if parent != "Symbol":
+            if parent != "Top":
                 graph.add_edge(parent, t.name)
 
         @dispatch.register
@@ -332,7 +380,7 @@ class TypeSpec:
 
         for pd in self._preds.values():
             # this avoids adding edges for predicates
-            parent = "Symbol"
+            parent = "Top"
             for x in pd.args:
                 dispatch(x)
 
