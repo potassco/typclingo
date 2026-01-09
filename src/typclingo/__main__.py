@@ -6,19 +6,21 @@ import sys
 
 from clingo.app import clingo_main
 from clingo.core import Library
+from clingo.script import enable_python
 
 from .app import TypClingoApp
 
-__all__ = ["main"]
+__all__ = ["typclingo_main"]
 
 
-def main() -> None:
+def typclingo_main() -> None:
     """
     Run the TypeClingo application.
     """
     lib = Library()
+    enable_python(lib)
     clingo_main(lib, sys.argv[1:], TypClingoApp(lib))
 
 
 if __name__ == "__main__":
-    main()
+    typclingo_main()

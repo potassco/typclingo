@@ -203,7 +203,7 @@ class TypeChecker:
             if td.rel == TypeRelation.EQUAL:
                 return self.meet(lhs, td.type, env)
 
-        if isinstance(lhs, TypeCons) and lhs.name != "Symbol":
+        if isinstance(lhs, TypeCons):
             td = self.spec.get_type_def(lhs.name)
             if lhs.name == "Symbol":
                 return rhs

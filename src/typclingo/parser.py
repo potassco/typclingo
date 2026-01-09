@@ -199,6 +199,8 @@ class Parser:
                 spec.add_pred(self.parse_pred())
             elif self.branch("prog"):
                 spec.add_prog(self.parse_prog())
+            elif self.branch("func"):
+                raise NotImplementedError("Function type annotations are not implemented yet")
             else:
                 self.consume("*%", gobble=True)
                 break

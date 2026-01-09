@@ -24,7 +24,7 @@ doc = ["mkdocs", "mkdocs-material", "mkdocstrings[python]", "mkdoclingo"]
 dev = ["typclingo[test,typecheck,lint_pylint]"]
 
 [project.scripts]
-typclingo = "typclingo.__main__:main"
+typclingo = "typclingo.__main__:typclingo_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

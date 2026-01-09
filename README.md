@@ -37,5 +37,9 @@ Instructions to install and use `nox` can be found in
 ```bash
 typclingo --type-check examples/queens.lp
 typclingo --type-check examples/meta.lp
+typclingo --type-check examples/toh.lp
+typclingo --type-check examples/sort.lp
 typclingo --type-check  --log-level-types=debug test.lp
 ```
+
+Note that the sort example does not run yet.
