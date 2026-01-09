@@ -31,11 +31,11 @@ class ColoredFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
-    def __init__(self, use_colors=True):
+    def __init__(self, use_colors: bool = True) -> None:
         super().__init__(fmt="%(levelname)s: %(message)s")
         self.use_colors = use_colors
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         if not self.use_colors or not record.__dict__.get("_isatty", True):
             return f"{record.levelname}: {record.getMessage()}"
 
@@ -57,7 +57,7 @@ class TypClingoApp(App):
         self.log_level = logging.INFO
         self.enable_type_check = Flag()
 
-    def parse_vebosity(self, value: str):
+    def parse_vebosity(self, value: str) -> None:
         """
         Parse and set the verbosity level for type checking logs.
         """
@@ -77,7 +77,7 @@ class TypClingoApp(App):
         """
         Register typclingo-specific options.
         """
-        group = "TypeClingo Options"
+        group = "Type Checking Options"
         options.add_flag(group, "type-check", "Enable type checking", self.enable_type_check)
         options.add(
             group,

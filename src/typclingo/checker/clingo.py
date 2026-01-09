@@ -32,15 +32,21 @@ TODO:
 - Better diagnostics and more info about computed types.
   - Maybe compute union of predicate rules and give a summary of types used at
     the end.
-- Support for more term and statement types.
-- Better support for pools.
+- Add support for more term types.
+  - Tuples are missing.
+  - Format strings are missing.
+- Add support for external functions.
+  - Should be easy but requires format spec extension with typing information for external
+- Maybe better support for pools.
+  - The benefit might be to small to invest the effort.
+- Add support for typing theory atoms.
 """
 
 import logging
 from typing import Iterable
 
 from clingo import ast
-from clingo.symbol import SymbolType
+from clingo.symbol import Symbol, SymbolType
 
 from ..spec import (
     FunctionCons,
@@ -77,7 +83,7 @@ class ClingoChecker(TypeChecker):
 
     def add_variable(self, name: str) -> Type:
         """
-        Add a variable to the type self.
+        Add a variable to the type checker.
 
         This either returns an existing type variable for the given name or
         adds a new one. In case of anonymous variables "_", we simply use the
@@ -146,25 +152,7 @@ class ClingoChecker(TypeChecker):
                     opts.append(FunctionCons(term.name, t_args))
             return self.simplify_type(UnionCons(opts))
         if isinstance(term, ast.TermSymbolic):
-            sym = term.symbol
-            if sym.type == SymbolType.Number:
-                return TypeCons("Number")
-            if sym.type == SymbolType.String:
-                return TypeCons("String")
-            if sym.type == SymbolType.Infimum:
-                return TypeCons("Infimum")
-            if sym.type == SymbolType.Supremum:
-                return TypeCons("Supremum")
-            if sym.type == SymbolType.Tuple:
-                raise NotImplementedError("tuple symbols are not supported yet")
-            assert sym.type == SymbolType.Function
-            if len(sym.arguments):
-                # TODO:
-                # - easy to implement
-                raise NotImplementedError("only constants are supported for now")
-            if not protect_pred and sym.name in self.params:
-                return self.params[sym.name]
-            return FunctionCons(sym.name, [])
+            return self.add_symbol(term.symbol, protect_pred)
 
         assert isinstance(term, (ast.TermFormatString, ast.TermTuple))
         # TODO:
@@ -172,29 +160,57 @@ class ClingoChecker(TypeChecker):
         # - maybe represent tuples as functions with an empty name
         raise NotImplementedError(f"unhandled term: {term}")
 
+    def add_symbol(self, sym: Symbol, protect_pred: bool = False) -> Type:
+        """
+        Add a symbol to the type checker.
+        """
+        if sym.type == SymbolType.Number:
+            return TypeCons("Number")
+        if sym.type == SymbolType.String:
+            return TypeCons("String")
+        if sym.type == SymbolType.Infimum:
+            return TypeCons("Infimum")
+        if sym.type == SymbolType.Supremum:
+            return TypeCons("Supremum")
+        if sym.type == SymbolType.Tuple:
+            raise NotImplementedError("tuple symbols are not supported yet")
+        assert sym.type == SymbolType.Function
+        args = []
+        if sym.arguments:
+            for arg in sym.arguments:
+                args.append(self.add_symbol(arg))
+        elif not protect_pred and sym.name in self.params:
+            return self.params[sym.name]
+        return FunctionCons(sym.name, args)
+
+    def add_atom(self, atom: ast.Term) -> None:
+        """
+        Add an atom to the type checker.
+        """
+        if isinstance(atom, ast.TermFunction):
+            t_atom = self.add_term(atom, True)
+            opts: list[Type] = []
+            # NOTE: the same as in add_term applies here
+            for args in atom.pool:
+                arity = len(args.arguments)
+                if pred := self.spec.get_pred(atom.name, arity):
+                    opts.append(FunctionCons(pred.name, pred.args))
+                else:
+                    opts.append(FunctionCons(atom.name, [TypeCons("Symbol")] * arity))
+            t_pred = self.simplify_type(UnionCons(opts))
+            self.constraints.append((t_atom, t_pred))
+        else:
+            logger.warning("symbolic terms and classically negated atoms are not yet supported")
+
     def add_lit(self, lit: ast.Literal) -> None:
         """
-        Add a literal to the type self.
+        Add a literal to the type checker.
         """
         if isinstance(lit, ast.LiteralBoolean):
             # nothing to type here
             pass
         elif isinstance(lit, ast.LiteralSymbolic):
-            atom = lit.atom
-            if isinstance(atom, ast.TermFunction):
-                t_atom = self.add_term(atom, True)
-                opts: list[Type] = []
-                # NOTE: the same as in add_term applies here
-                for args in atom.pool:
-                    arity = len(args.arguments)
-                    if pred := self.spec.get_pred(atom.name, arity):
-                        opts.append(FunctionCons(pred.name, pred.args))
-                    else:
-                        opts.append(FunctionCons(atom.name, [TypeCons("Symbol")] * arity))
-                t_pred = self.simplify_type(UnionCons(opts))
-                self.constraints.append((t_atom, t_pred))
-            else:
-                logger.warning("symbolic terms and classically negated atoms are not yet supported")
+            self.add_atom(lit.atom)
         else:
             assert isinstance(lit, ast.LiteralComparison)
             t_lhs = self.add_term(lit.left)
@@ -209,7 +225,7 @@ class ClingoChecker(TypeChecker):
         fun: ast.AggregateFunction,
     ) -> None:
         """
-        Add guards for an aggregate to the type self.
+        Add guards for an aggregate to the type checker.
         """
         t_guard = TypeCons("Number")
         if fun in (
@@ -225,7 +241,7 @@ class ClingoChecker(TypeChecker):
 
     def add_saggr(self, aggr: ast.BodySetAggregate | ast.HeadSetAggregate) -> None:
         """
-        Add a set aggregate to the type self.
+        Add a set aggregate to the type checker.
         """
         self.add_guards(aggr, ast.AggregateFunction.Count)
         for elem in aggr.elements:
@@ -236,7 +252,7 @@ class ClingoChecker(TypeChecker):
 
     def add_blit(self, blit: ast.BodyLiteral) -> None:
         """
-        Add a body literal to the type self.
+        Add a body literal to the type checker.
         """
         if isinstance(blit, ast.BodyConditionalLiteral):
             self.add_lit(blit.literal)
@@ -261,7 +277,7 @@ class ClingoChecker(TypeChecker):
 
     def add_hlit(self, hlit: ast.HeadLiteral) -> None:
         """
-        Add a head literal to the type self.
+        Add a head literal to the type checker.
         """
         if isinstance(hlit, ast.HeadSimpleLiteral):
             self.add_lit(hlit.literal)
@@ -288,6 +304,16 @@ class ClingoChecker(TypeChecker):
         else:
             isinstance(hlit, ast.HeadTheoryAtom)
             logger.warning("theory atoms are not yet supported")
+
+    def add_otuple(self, tup: ast.OptimizeTuple) -> None:
+        """
+        Type check an optimize tuple.
+        """
+        for term in tup.terms:
+            self.constraints.append((self.add_term(term), TypeCons("Symbol")))
+        self.constraints.append((self.add_term(tup.weight), TypeCons("Number")))
+        if tup.priority is not None:
+            self.constraints.append((self.add_term(tup.priority), TypeCons("Number")))
 
 
 class ParamHolder:
@@ -347,16 +373,21 @@ class ParamHolder:
 
 def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
     """
-    Add a statement to the type self.
+    Add a statement to the type checker.
     """
     # pylint: disable=cell-var-from-loop
     if isinstance(
         stm,
         (
+            ast.StatementComment,
             ast.StatementShowSignature,
             ast.StatementShowNothing,
             ast.StatementProjectSignature,
             ast.StatementConst,
+            ast.StatementDefined,
+            ast.StatementInclude,
+            ast.StatementScript,
+            ast.StatementTheory,
         ),
     ):
         # nothing to check here
@@ -366,38 +397,92 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
             params.set_prog(zip(stm.arguments, prog.args))
         else:
             params.set_prog(zip(stm.arguments, [TypeCons("Symbol")] * len(stm.arguments)))
-    elif isinstance(stm, ast.StatementShow):
+    elif isinstance(stm, ast.StatementParts):
         logger.debug("checking %s", stm)
-        glob = get_global(stm)
-        checker = ClingoChecker(spec, glob, params.get_params())
-        checker.constraints.append((checker.add_term(stm.term), TypeCons("Symbol")))
-        for blit in stm.body:
-            checker.add_blit(blit)
-        if not checker.solve():
+        res = True
+        for part in stm.elements:
+            if prog := spec.get_prog(part.name, len(part.arguments)):
+                # TODO: check whether constants have to be substituted in parts
+                # statements
+                checker = ClingoChecker(spec, set(), {})
+                for arg, typ in zip(part.arguments, prog.args):
+                    checker.constraints.append((checker.add_symbol(arg), typ))
+                res = checker.solve() and res
+        if not res:
             logger.error("checking failed for %s", stm)
-
-        for name, typ in checker.type_map.items():
-            logger.debug(
-                "  %s : %s",
-                name,
-                LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),
-            )
-
-    elif isinstance(stm, ast.StatementRule):
-        logger.debug("checking %s", stm)
-        glob = get_global(stm)
-        checker = ClingoChecker(spec, glob, params.get_params())
-        checker.add_hlit(stm.head)
-        for blit in stm.body:
-            checker.add_blit(blit)
-        if not checker.solve():
-            logger.error("checking failed for %s", stm)
-        for name, typ in checker.type_map.items():
-            logger.debug(
-                "  %s : %s",
-                name,
-                LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),
-            )
     else:
-        # TODO: it should be simple to add more statement types here
-        logger.warning("only a limited set of statements is supported")
+        logger.debug("checking %s", stm)
+        glob = get_global(stm)
+        checker = ClingoChecker(spec, glob, params.get_params())
+        if isinstance(stm, ast.StatementRule):
+            checker.add_hlit(stm.head)
+        elif isinstance(stm, ast.StatementProject):
+            checker.add_atom(stm.atom)
+        elif isinstance(stm, ast.StatementShow):
+            checker.constraints.append((checker.add_term(stm.term), TypeCons("Symbol")))
+        elif isinstance(stm, ast.StatementEdge):
+            src = []
+            dst = []
+            for edge in stm.pool:
+                src.append(checker.add_term(edge.u))
+                dst.append(checker.add_term(edge.v))
+            checker.constraints.append((checker.simplify_type(UnionCons(src)), TypeCons("Symbol")))
+            checker.constraints.append((checker.simplify_type(UnionCons(dst)), TypeCons("Symbol")))
+        elif isinstance(stm, ast.StatementExternal):
+            checker.add_atom(stm.atom)
+            if stm.external_type is not None:
+                checker.constraints.append(
+                    (
+                        checker.add_term(stm.external_type),
+                        UnionCons(
+                            [
+                                FunctionCons("true", []),
+                                FunctionCons("false", []),
+                                FunctionCons("free", []),
+                                FunctionCons("release", []),
+                            ]
+                        ),
+                    ),
+                )
+        elif isinstance(stm, ast.StatementHeuristic):
+            checker.add_atom(stm.atom)
+            if stm.priority:
+                checker.constraints.append((checker.add_term(stm.priority), TypeCons("Number")))
+            checker.constraints.append((checker.add_term(stm.weight), TypeCons("Number")))
+            checker.constraints.append(
+                (
+                    checker.add_term(stm.modifier),
+                    UnionCons(
+                        [
+                            FunctionCons("true", []),
+                            FunctionCons("false", []),
+                            FunctionCons("level", []),
+                            FunctionCons("sign", []),
+                            FunctionCons("factor", []),
+                            FunctionCons("init", []),
+                        ]
+                    ),
+                )
+            )
+        elif isinstance(stm, ast.StatementWeakConstraint):
+            checker.add_otuple(stm.tuple)
+        else:
+            assert isinstance(stm, ast.StatementOptimize)
+
+        if isinstance(stm, ast.StatementOptimize):
+            for oelem in stm.elements:
+                for lit in oelem.condition:
+                    checker.add_lit(lit)
+                checker.add_otuple(oelem.tuple)
+        else:
+            for blit in stm.body:
+                checker.add_blit(blit)
+
+        if not checker.solve():
+            logger.error("checking failed for %s", stm)
+        for name, typ in checker.type_map.items():
+            logger.debug(
+                "  %s : %s",
+                name,
+                LazyStr(lambda: checker.simplify_type(checker.expand_type(typ))),
+            )
