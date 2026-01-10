@@ -41,6 +41,9 @@ from functools import singledispatchmethod
 
 from ..spec import (
     BOT,
+    FUNCTION,
+    SYMBOL,
+    TOP,
     FunctionCons,
     Type,
     TypeCons,
@@ -111,7 +114,7 @@ class TypeChecker:
         Expand type variables in the given type using the environment.
         """
         if isinstance(t, TypeVar):
-            return self.expand_type(self.env.get(t.name, TypeCons("Symbol")))
+            return self.expand_type(self.env.get(t.name, SYMBOL))
         if isinstance(t, UnionCons):
             return UnionCons([self.expand_type(x) for x in t.opts])
         if isinstance(t, FunctionCons):
@@ -136,7 +139,7 @@ class TypeChecker:
             return False
 
         if isinstance(lhs, TypeVar):
-            return self.subtype(env.get(lhs.name, TypeCons("Symbol")), rhs, env)
+            return self.subtype(env.get(lhs.name, SYMBOL), rhs, env)
 
         if isinstance(rhs, UnionCons):
             return any(self.subtype(lhs, x, env) for x in rhs.opts)
@@ -145,7 +148,7 @@ class TypeChecker:
             return all(self.subtype(x, rhs, env) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons) and isinstance(rhs, TypeCons):
-            if rhs.name in ("Top", "Function"):
+            if rhs in (TOP, FUNCTION):
                 return True
             td = self.spec.get_type_def(rhs.name)
             return td.rel == TypeRelation.EQUAL and self.subtype(lhs, td.type, env)
@@ -161,7 +164,7 @@ class TypeChecker:
 
         # unfold lhs type definition
         td_lhs = self.spec.get_type_def(lhs.name)
-        if lhs.name != "Top":
+        if lhs != TOP:
             # check transitively first
             if self.subtype(td_lhs.type, rhs, env):
                 return True
@@ -171,10 +174,10 @@ class TypeChecker:
             if td_lhs.rel == TypeRelation.EQUAL:
                 return False
 
-        assert lhs.name == "Top" or td_lhs.rel == TypeRelation.SUBTYPE
+        assert lhs == TOP or td_lhs.rel == TypeRelation.SUBTYPE
 
         if isinstance(rhs, TypeCons):
-            if rhs.name in ("Top", lhs.name):
+            if rhs in (TOP, lhs):
                 return True
             td_rhs = self.spec.get_type_def(rhs.name)
             return td_rhs.rel == TypeRelation.EQUAL and self.subtype(lhs, td_rhs.type, env)
@@ -207,14 +210,14 @@ class TypeChecker:
 
         if isinstance(rhs, TypeCons):
             td = self.spec.get_type_def(rhs.name)
-            if rhs.name == "Top":
+            if rhs == TOP:
                 return debug(lhs) if not direct or lhs == rhs else BOT
             if td.rel == TypeRelation.EQUAL:
                 return debug(self.meet(lhs, td.type, env, direct))
 
         if isinstance(lhs, TypeCons):
             td = self.spec.get_type_def(lhs.name)
-            if lhs.name == "Top":
+            if lhs == TOP:
                 return debug(rhs) if not direct or lhs == rhs else BOT
             if td.rel == TypeRelation.EQUAL:
                 return debug(self.meet(td.type, rhs, env, direct))
@@ -238,7 +241,7 @@ class TypeChecker:
             return debug(self.simplify_type(UnionCons(opts)))
 
         if isinstance(rhs, TypeVar):
-            t_rhs = env.get(rhs.name, TypeCons("Symbol"))
+            t_rhs = env.get(rhs.name, SYMBOL)
             res = self.meet(lhs, t_rhs, env, direct)
             env[rhs.name] = res
             return debug(res)
@@ -272,7 +275,7 @@ class TypeChecker:
                 return BOT
             assert isinstance(lhs, FunctionCons)
 
-            if rhs.name == "Function":
+            if rhs == FUNCTION:
                 return debug(lhs)
             if self.meet(lhs, td_rhs.type, env, True) != BOT:
                 return debug(rhs)

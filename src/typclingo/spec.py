@@ -8,6 +8,14 @@ from functools import singledispatch
 
 __all__ = [
     "BOT",
+    "TOP",
+    "SYMBOL",
+    "FUNCTION",
+    "INFIMUM",
+    "SUPREMUM",
+    "NUMBER",
+    "STRING",
+    "TUPLE",
     "External",
     "FunctionCons",
     "Predicate",
@@ -108,6 +116,14 @@ class UnionCons:
 
 
 BOT = UnionCons([])
+TOP = TypeCons("Top")
+SYMBOL = TypeCons("Symbol")
+FUNCTION = TypeCons("Function")
+INFIMUM = TypeCons("Infimum")
+SUPREMUM = TypeCons("Supremum")
+NUMBER = TypeCons("Number")
+STRING = TypeCons("String")
+TUPLE = TypeCons("Tuple")
 
 type Type = TypeCons | FunctionCons | UnionCons | TypeVar
 
@@ -242,26 +258,17 @@ class TypeSpec:
     @staticmethod
     def _default_types() -> dict[str, TypeDef]:
         # NOTE: cyclic definition are intentional here
-        top = TypeDef("Top", TypeRelation.SUBTYPE, TypeCons("Top"))
-        num = TypeDef("Number", TypeRelation.SUBTYPE, TypeCons("Top"))
-        fun = TypeDef("Function", TypeRelation.SUBTYPE, TypeCons("Top"))
-        tup = TypeDef("Tuple", TypeRelation.SUBTYPE, TypeCons("Top"))
-        inf = TypeDef("Infimum", TypeRelation.SUBTYPE, TypeCons("Top"))
-        sup = TypeDef("Supremum", TypeRelation.SUBTYPE, TypeCons("Top"))
-        string = TypeDef("String", TypeRelation.SUBTYPE, TypeCons("Top"))
+        top = TypeDef(TOP.name, TypeRelation.SUBTYPE, TOP)
+        num = TypeDef(NUMBER.name, TypeRelation.SUBTYPE, TOP)
+        fun = TypeDef(FUNCTION.name, TypeRelation.SUBTYPE, TOP)
+        tup = TypeDef(TUPLE.name, TypeRelation.SUBTYPE, TOP)
+        inf = TypeDef(INFIMUM.name, TypeRelation.SUBTYPE, TOP)
+        sup = TypeDef(SUPREMUM.name, TypeRelation.SUBTYPE, TOP)
+        string = TypeDef(STRING.name, TypeRelation.SUBTYPE, TOP)
         sym = TypeDef(
-            "Symbol",
+            SYMBOL.name,
             TypeRelation.EQUAL,
-            UnionCons(
-                [
-                    TypeCons("Number"),
-                    TypeCons("Function"),
-                    TypeCons("Tuple"),
-                    TypeCons("Infimum"),
-                    TypeCons("Supremum"),
-                    TypeCons("String"),
-                ]
-            ),
+            UnionCons([NUMBER, FUNCTION, TUPLE, INFIMUM, SUPREMUM, STRING]),
         )
         return {
             top.name: top,
@@ -346,7 +353,7 @@ class TypeSpec:
         """
 
         graph = Graph()
-        parent = "Top"
+        parent = TOP.name
 
         @singledispatch
         def dispatch(t: Type) -> None:
@@ -359,7 +366,7 @@ class TypeSpec:
             if t.name not in self._types:
                 raise ValueError(f"Type '{t.name}' not defined")
             # we skip symbol here because they are cyclically defined
-            if parent != "Top":
+            if parent != TOP.name:
                 graph.add_edge(parent, t.name)
 
         @dispatch.register
@@ -380,7 +387,7 @@ class TypeSpec:
 
         for pd in self._preds.values():
             # this avoids adding edges for predicates
-            parent = "Top"
+            parent = TOP.name
             for x in pd.args:
                 dispatch(x)
 

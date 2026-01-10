@@ -49,9 +49,14 @@ from clingo import ast
 from clingo.symbol import Symbol, SymbolType
 
 from ..spec import (
+    FUNCTION,
+    INFIMUM,
+    NUMBER,
+    STRING,
+    SUPREMUM,
+    SYMBOL,
     FunctionCons,
     Type,
-    TypeCons,
     TypeSpec,
     TypeVar,
     UnionCons,
@@ -90,7 +95,7 @@ class ClingoChecker(TypeChecker):
         most general type "Symbol".
         """
         if name == "_":
-            return TypeCons("Symbol")
+            return SYMBOL
         if name not in self.glob:
             name = f"{name}@{self.scope}"
         return self.type_map.setdefault(name, TypeVar(name))
@@ -107,23 +112,20 @@ class ClingoChecker(TypeChecker):
             return self.add_variable(term.name)
         if isinstance(term, ast.TermAbsolute):
             for arg in term.pool:
-                self.constraints.append((self.add_term(arg), TypeCons("Number")))
-            return TypeCons("Number")
+                self.constraints.append((self.add_term(arg), NUMBER))
+            return NUMBER
         if isinstance(term, ast.TermBinaryOperation):
-            num = TypeCons("Number")
             lhs = self.add_term(term.left)
             rhs = self.add_term(term.right)
-            self.constraints.append((lhs, num))
-            self.constraints.append((rhs, num))
-            return num
+            self.constraints.append((lhs, NUMBER))
+            self.constraints.append((rhs, NUMBER))
+            return NUMBER
         if isinstance(term, ast.TermUnaryOperation):
-            num = TypeCons("Number")
             rhs = self.add_term(term.right)
             if term.operator_type == ast.UnaryOperator.Negation:
-                self.constraints.append((rhs, num))
-                return num
-            fun = TypeCons("Function")
-            typ = UnionCons([num, fun])
+                self.constraints.append((rhs, NUMBER))
+                return NUMBER
+            typ = UnionCons([NUMBER, FUNCTION])
             # TODO: maybe specialize for isinstance(term.right, TermFunction)
             self.constraints.append((rhs, typ))
             return typ
@@ -137,7 +139,7 @@ class ClingoChecker(TypeChecker):
                 t_args: list[Type] = []
                 for x in args.arguments:
                     if isinstance(x, ast.Projection):
-                        t_args.append(TypeCons("Symbol"))
+                        t_args.append(SYMBOL)
                     else:
                         t_args.append(self.add_term(x))
                 if term.external:
@@ -146,8 +148,8 @@ class ClingoChecker(TypeChecker):
                         f_args = func.args
                         opts.append(func.result)
                     else:
-                        f_args = [TypeCons("Symbol")] * len(t_args)
-                        opts.append(TypeCons("Symbol"))
+                        f_args = [SYMBOL] * len(t_args)
+                        opts.append(SYMBOL)
                     self.constraints.extend(zip(t_args, f_args))
                 else:
                     if not protect_pred and not t_args and term.name in self.params:
@@ -164,20 +166,20 @@ class ClingoChecker(TypeChecker):
         # - implement format strings and tuples
         # - maybe represent tuples as functions with an empty name
         logger.error("unhandled term: %s", term)
-        return TypeCons("Symbol")
+        return SYMBOL
 
     def add_symbol(self, sym: Symbol, protect_pred: bool = False) -> Type:
         """
         Add a symbol to the type checker.
         """
         if sym.type == SymbolType.Number:
-            return TypeCons("Number")
+            return NUMBER
         if sym.type == SymbolType.String:
-            return TypeCons("String")
+            return STRING
         if sym.type == SymbolType.Infimum:
-            return TypeCons("Infimum")
+            return INFIMUM
         if sym.type == SymbolType.Supremum:
-            return TypeCons("Supremum")
+            return SUPREMUM
         if sym.type == SymbolType.Tuple:
             raise NotImplementedError("tuple symbols are not supported yet")
         assert sym.type == SymbolType.Function
@@ -202,7 +204,7 @@ class ClingoChecker(TypeChecker):
                 if pred := self.spec.get_pred(atom.name, arity):
                     opts.append(FunctionCons(pred.name, pred.args))
                 else:
-                    opts.append(FunctionCons(atom.name, [TypeCons("Symbol")] * arity))
+                    opts.append(FunctionCons(atom.name, [SYMBOL] * arity))
             t_pred = self.simplify_type(UnionCons(opts))
             self.constraints.append((t_atom, t_pred))
         else:
@@ -233,13 +235,13 @@ class ClingoChecker(TypeChecker):
         """
         Add guards for an aggregate to the type checker.
         """
-        t_guard = TypeCons("Number")
+        t_guard = NUMBER
         if fun in (
             ast.AggregateFunction.Count,
             ast.AggregateFunction.Sum,
             ast.AggregateFunction.Sump,
         ):
-            t_guard = TypeCons("Symbol")
+            t_guard = SYMBOL
         if lhs := aggr.left:
             self.constraints.append((self.add_term(lhs.term), t_guard))
         if rhs := aggr.right:
@@ -271,7 +273,7 @@ class ClingoChecker(TypeChecker):
             self.add_guards(blit, blit.function)
             for elem in blit.elements:
                 for term in elem.tuple:
-                    self.constraints.append((self.add_term(term), TypeCons("Symbol")))
+                    self.constraints.append((self.add_term(term), SYMBOL))
                 for lit in elem.condition:
                     self.add_lit(lit)
                 self.scope += 1
@@ -300,7 +302,7 @@ class ClingoChecker(TypeChecker):
             self.add_guards(hlit, hlit.function)
             for helem in hlit.elements:
                 for term in helem.tuple:
-                    self.constraints.append((self.add_term(term), TypeCons("Symbol")))
+                    self.constraints.append((self.add_term(term), SYMBOL))
                 self.add_lit(helem.literal)
                 for lit in helem.condition:
                     self.add_lit(lit)
@@ -316,10 +318,10 @@ class ClingoChecker(TypeChecker):
         Type check an optimize tuple.
         """
         for term in tup.terms:
-            self.constraints.append((self.add_term(term), TypeCons("Symbol")))
-        self.constraints.append((self.add_term(tup.weight), TypeCons("Number")))
+            self.constraints.append((self.add_term(term), SYMBOL))
+        self.constraints.append((self.add_term(tup.weight), NUMBER))
         if tup.priority is not None:
-            self.constraints.append((self.add_term(tup.priority), TypeCons("Number")))
+            self.constraints.append((self.add_term(tup.priority), NUMBER))
 
 
 class ParamHolder:
@@ -402,7 +404,7 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         if prog := spec.get_prog(stm.name, len(stm.arguments)):
             params.set_prog(zip(stm.arguments, prog.args))
         else:
-            params.set_prog(zip(stm.arguments, [TypeCons("Symbol")] * len(stm.arguments)))
+            params.set_prog(zip(stm.arguments, [SYMBOL] * len(stm.arguments)))
     elif isinstance(stm, ast.StatementParts):
         logger.info("checking %s", stm)
         res = True
@@ -425,15 +427,15 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         elif isinstance(stm, ast.StatementProject):
             checker.add_atom(stm.atom)
         elif isinstance(stm, ast.StatementShow):
-            checker.constraints.append((checker.add_term(stm.term), TypeCons("Symbol")))
+            checker.constraints.append((checker.add_term(stm.term), SYMBOL))
         elif isinstance(stm, ast.StatementEdge):
             src = []
             dst = []
             for edge in stm.pool:
                 src.append(checker.add_term(edge.u))
                 dst.append(checker.add_term(edge.v))
-            checker.constraints.append((checker.simplify_type(UnionCons(src)), TypeCons("Symbol")))
-            checker.constraints.append((checker.simplify_type(UnionCons(dst)), TypeCons("Symbol")))
+            checker.constraints.append((checker.simplify_type(UnionCons(src)), SYMBOL))
+            checker.constraints.append((checker.simplify_type(UnionCons(dst)), SYMBOL))
         elif isinstance(stm, ast.StatementExternal):
             checker.add_atom(stm.atom)
             if stm.external_type is not None:
@@ -453,8 +455,8 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         elif isinstance(stm, ast.StatementHeuristic):
             checker.add_atom(stm.atom)
             if stm.priority:
-                checker.constraints.append((checker.add_term(stm.priority), TypeCons("Number")))
-            checker.constraints.append((checker.add_term(stm.weight), TypeCons("Number")))
+                checker.constraints.append((checker.add_term(stm.priority), NUMBER))
+            checker.constraints.append((checker.add_term(stm.weight), NUMBER))
             checker.constraints.append(
                 (
                     checker.add_term(stm.modifier),
