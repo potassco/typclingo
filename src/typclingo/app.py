@@ -114,7 +114,7 @@ class TypClingoApp(App):
                     stms.append(stm)
                 prg.add(stm)
 
-            ast.parse_files(self.lib, files, cb)
+            ast.parse_files(self.lib, files, cb, control)
             spec.check()
 
             logger.debug("Type Specification")
