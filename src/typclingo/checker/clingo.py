@@ -207,8 +207,18 @@ class ClingoChecker(TypeChecker):
                     opts.append(FunctionCons(atom.name, [SYMBOL] * arity))
             t_pred = self.simplify_type(UnionCons(opts))
             self.constraints.append((t_atom, t_pred))
-        else:
-            logger.warning("symbolic terms and classically negated atoms are not yet supported")
+        elif isinstance(atom, ast.TermSymbolic):
+            t_atom = self.add_symbol(atom.symbol, True)
+            assert atom.symbol.type == SymbolType.Function
+            arity = len(atom.symbol.arguments)
+            if pred := self.spec.get_pred(atom.symbol.name, arity):
+                t_pred = FunctionCons(pred.name, pred.args)
+            else:
+                t_pred = FunctionCons(atom.symbol.name, [SYMBOL] * arity)
+            self.constraints.append((t_atom, t_pred))
+        elif isinstance(atom, ast.TermUnaryOperation):
+            assert atom.operator_type == ast.UnaryOperator.Minus
+            self.add_atom(atom.right)
 
     def add_lit(self, lit: ast.Literal) -> None:
         """
