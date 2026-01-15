@@ -42,8 +42,13 @@ from functools import singledispatchmethod
 from ..spec import (
     BOT,
     FUNCTION,
+    INFIMUM,
+    NUMBER,
+    STRING,
+    SUPREMUM,
     SYMBOL,
     TOP,
+    TUPLE,
     FunctionCons,
     Type,
     TypeCons,
@@ -185,7 +190,31 @@ class TypeChecker:
         assert isinstance(rhs, (UnionCons, FunctionCons))
         return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env) for x in rhs.opts)
 
-    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type], direct: bool = False) -> Type:
+    def relaxed_subtype(self, lhs: Type, rhs: TypeCons) -> bool:
+        """
+        Check that we can reach rhs from lhs by unfolding type definitions.
+        """
+        if rhs in (TOP, SYMBOL):
+            return True
+
+        if lhs == TOP:
+            return False
+
+        if isinstance(lhs, TypeCons):
+            if lhs == rhs:
+                return True
+            td_lhs = self.spec.get_type_def(lhs.name)
+            return self.relaxed_subtype(td_lhs.type, rhs)
+
+        if isinstance(lhs, UnionCons):
+            return any(self.relaxed_subtype(x, rhs) for x in lhs.opts)
+
+        if isinstance(lhs, FunctionCons):
+            return rhs == FUNCTION
+
+        assert False
+
+    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type]) -> Type:
         """
         Compute the meet of two types.
 
@@ -211,23 +240,23 @@ class TypeChecker:
         if isinstance(rhs, TypeCons):
             td = self.spec.get_type_def(rhs.name)
             if rhs == TOP:
-                return debug(lhs) if not direct or lhs == rhs else BOT
+                return debug(lhs)
             if td.rel == TypeRelation.EQUAL:
-                return debug(self.meet(lhs, td.type, env, direct))
+                return debug(self.meet(lhs, td.type, env))
 
         if isinstance(lhs, TypeCons):
             td = self.spec.get_type_def(lhs.name)
             if lhs == TOP:
-                return debug(rhs) if not direct or lhs == rhs else BOT
+                return debug(rhs)
             if td.rel == TypeRelation.EQUAL:
-                return debug(self.meet(td.type, rhs, env, direct))
+                return debug(self.meet(td.type, rhs, env))
 
         if isinstance(rhs, UnionCons):
             opts = []
             sub = []
             for opt in rhs.opts:
                 sub.append(env.copy())
-                opts.append(self.meet(opt, lhs, sub[-1], direct))
+                opts.append(self.meet(opt, lhs, sub[-1]))
 
             # merge subenvironments
             for subenv in sub:
@@ -242,12 +271,12 @@ class TypeChecker:
 
         if isinstance(rhs, TypeVar):
             t_rhs = env.get(rhs.name, SYMBOL)
-            res = self.meet(lhs, t_rhs, env, direct)
+            res = self.meet(lhs, t_rhs, env)
             env[rhs.name] = res
             return debug(res)
 
         if isinstance(lhs, (TypeVar, UnionCons)):
-            return self.meet(rhs, lhs, env, direct)
+            return self.meet(rhs, lhs, env)
 
         if isinstance(rhs, TypeCons):
             td_rhs = self.spec.get_type_def(rhs.name)
@@ -257,27 +286,18 @@ class TypeChecker:
                 # because neither lhs nor rhs can contain type variables
                 td_lhs = self.spec.get_type_def(lhs.name)
                 assert td_lhs.rel != TypeRelation.EQUAL
-                if direct:
-                    if lhs == rhs:
-                        return lhs
-                else:
-                    if self.subtype(lhs, rhs, env):
-                        return debug(lhs)
-                    if self.subtype(rhs, lhs, env):
-                        return debug(rhs)
-                    # L <: M and R <: S
-                    #   if L directly meets S then R
-                    #   if R directly meets M then L
-                    if self.meet(lhs, td_rhs.type, env.copy(), True) != BOT:
-                        return debug(rhs)
-                    if self.meet(rhs, td_lhs.type, env.copy(), True) != BOT:
-                        return debug(lhs)
+                if self.relaxed_subtype(rhs, lhs):
+                    return debug(rhs)
+                if self.relaxed_subtype(lhs, rhs):
+                    return debug(lhs)
                 return BOT
             assert isinstance(lhs, FunctionCons)
 
-            if rhs == FUNCTION:
+            if rhs in (SYMBOL, FUNCTION, TOP):
                 return debug(lhs)
-            if self.meet(lhs, td_rhs.type, env, True) != BOT:
+            if rhs in (NUMBER, STRING, INFIMUM, SUPREMUM, TUPLE):
+                return debug(BOT)
+            if self.meet(lhs, td_rhs.type, env) != BOT:
                 return debug(rhs)
             return debug(BOT)
 
