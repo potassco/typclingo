@@ -2,19 +2,18 @@
 type Bank <: left | right.
 type Group <: mis | can.
 type Time <: Number.
-type Fluent <: num(Group,Bank) | boat.
-type Action <: move(Value,Value).
+type Action <: move(Amount,Amount).
 type Amount <: Number.
-type Value <: Amount | Bank.
 
 pred group(Group).
 pred bank(Bank).
 pred opposite(Bank,Bank).
 pred action(Action).
 
-pred holds(Fluent,Value,Time).
+pred holds(boat,Bank,Time).
+pred holds(num(Group,Bank),Amount,Time).
 pred occurs(Action,Time).
-pred moved(Group,Value,Time).
+pred moved(Group,Amount,Time).
 
 prog step(Time).
 prog check(Time).

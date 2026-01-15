@@ -282,7 +282,7 @@ class TypeSpec:
         }
 
     _types: dict[str, TypeDef] = field(default_factory=_default_types)
-    _preds: dict[tuple[str, int], Predicate] = field(default_factory=dict)
+    _preds: dict[tuple[str, int], list[Predicate]] = field(default_factory=dict)
     _progs: dict[tuple[str, int], Program] = field(default_factory=dict)
     _funcs: dict[tuple[str, int], External] = field(default_factory=dict)
 
@@ -299,9 +299,7 @@ class TypeSpec:
         Add a predicate type annotation.
         """
         signature = (pred.name, len(pred.args))
-        if signature in self._preds:
-            raise ValueError(f"Predicate '{pred.name}/{len(pred.args)}' already defined")
-        self._preds[signature] = pred
+        self._preds.setdefault(signature, []).append(pred)
 
     def add_prog(self, prog: Program) -> None:
         """
@@ -329,11 +327,24 @@ class TypeSpec:
             raise ValueError(f"Type '{name}' not defined")
         return self._types[name]
 
-    def get_pred(self, name: str, arity: int) -> Predicate | None:
+    def get_preds(self, name: str, arity: int) -> list[Predicate]:
+        """
+        Get the predicate type annotations for the given name and arity.
+        """
+        return self._preds.get((name, arity), [])
+
+    def get_pred_type(self, name: str, arity: int) -> Type:
         """
         Get the predicate type annotation for the given name and arity.
         """
-        return self._preds.get((name, arity), None)
+        opts: list[Type] = []
+        for pred in self.get_preds(name, arity):
+            opts.append(FunctionCons(pred.name, pred.args))
+        if not opts:
+            opts.append(FunctionCons(name, [SYMBOL] * arity))
+        if len(opts) == 1:
+            return opts[0]
+        return UnionCons(opts)
 
     def get_prog(self, name: str, arity: int) -> Program | None:
         """
@@ -385,13 +396,17 @@ class TypeSpec:
 
         graph.check_acyclic()
 
-        for pd in self._preds.values():
-            # this avoids adding edges for predicates
-            parent = TOP.name
-            for x in pd.args:
-                dispatch(x)
+        for pds in self._preds.values():
+            for pd in pds:
+                # this avoids adding edges for predicates
+                parent = TOP.name
+                for x in pd.args:
+                    dispatch(x)
 
     def __str__(self) -> str:
         return "\n".join(
-            str(t) for t in list(self._types.values()) + list(self._progs.values()) + list(self._preds.values())
+            str(t)
+            for t in list(self._types.values())
+            + list(self._progs.values())
+            + list(pd for pds in self._preds.values() for pd in pds)
         )

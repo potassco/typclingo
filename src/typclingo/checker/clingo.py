@@ -195,26 +195,21 @@ class ClingoChecker(TypeChecker):
         """
         Add an atom to the type checker.
         """
+
         if isinstance(atom, ast.TermFunction):
             t_atom = self.add_term(atom, True)
             opts: list[Type] = []
             # NOTE: the same as in add_term applies here
             for args in atom.pool:
                 arity = len(args.arguments)
-                if pred := self.spec.get_pred(atom.name, arity):
-                    opts.append(FunctionCons(pred.name, pred.args))
-                else:
-                    opts.append(FunctionCons(atom.name, [SYMBOL] * arity))
+                opts.append(self.spec.get_pred_type(atom.name, arity))
             t_pred = self.simplify_type(UnionCons(opts))
             self.constraints.append((t_atom, t_pred))
         elif isinstance(atom, ast.TermSymbolic):
             t_atom = self.add_symbol(atom.symbol, True)
             assert atom.symbol.type == SymbolType.Function
             arity = len(atom.symbol.arguments)
-            if pred := self.spec.get_pred(atom.symbol.name, arity):
-                t_pred = FunctionCons(pred.name, pred.args)
-            else:
-                t_pred = FunctionCons(atom.symbol.name, [SYMBOL] * arity)
+            t_pred = self.spec.get_pred_type(atom.symbol.name, arity)
             self.constraints.append((t_atom, t_pred))
         elif isinstance(atom, ast.TermUnaryOperation):
             assert atom.operator_type == ast.UnaryOperator.Minus

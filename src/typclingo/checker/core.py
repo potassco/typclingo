@@ -190,9 +190,9 @@ class TypeChecker:
         assert isinstance(rhs, (UnionCons, FunctionCons))
         return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env) for x in rhs.opts)
 
-    def relaxed_subtype(self, lhs: Type, rhs: TypeCons) -> bool:
+    def reachable_supertype(self, lhs: Type, rhs: TypeCons) -> bool:
         """
-        Check that we can reach rhs from lhs by unfolding type definitions.
+        Check if we can reach rhs by unfolding type definitions in lhs.
         """
         if rhs in (TOP, SYMBOL):
             return True
@@ -204,10 +204,10 @@ class TypeChecker:
             if lhs == rhs:
                 return True
             td_lhs = self.spec.get_type_def(lhs.name)
-            return self.relaxed_subtype(td_lhs.type, rhs)
+            return self.reachable_supertype(td_lhs.type, rhs)
 
         if isinstance(lhs, UnionCons):
-            return any(self.relaxed_subtype(x, rhs) for x in lhs.opts)
+            return any(self.reachable_supertype(x, rhs) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons):
             return rhs == FUNCTION
@@ -256,7 +256,10 @@ class TypeChecker:
             sub = []
             for opt in rhs.opts:
                 sub.append(env.copy())
-                opts.append(self.meet(opt, lhs, sub[-1]))
+                opts.append(self.simplify_type(self.meet(opt, lhs, sub[-1])))
+                if opts[-1] == BOT:
+                    opts.pop()
+                    sub.pop()
 
             # merge subenvironments
             for subenv in sub:
@@ -286,9 +289,9 @@ class TypeChecker:
                 # because neither lhs nor rhs can contain type variables
                 td_lhs = self.spec.get_type_def(lhs.name)
                 assert td_lhs.rel != TypeRelation.EQUAL
-                if self.relaxed_subtype(rhs, lhs):
+                if self.reachable_supertype(rhs, lhs):
                     return debug(rhs)
-                if self.relaxed_subtype(lhs, rhs):
+                if self.reachable_supertype(lhs, rhs):
                     return debug(lhs)
                 return BOT
             assert isinstance(lhs, FunctionCons)
