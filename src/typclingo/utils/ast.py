@@ -1,5 +1,5 @@
 """
-Utilities for typeclingo.
+Utilities for typclingo.
 """
 
 from functools import singledispatch

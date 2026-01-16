@@ -1,3 +1,3 @@
 """
-The type checker module for TypeClingo.
+The type checker module for typclingo.
 """

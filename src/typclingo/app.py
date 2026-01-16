@@ -1,5 +1,5 @@
 """
-Main application module for TypeClingo.
+Main application module for typclingo.
 """
 
 import logging
@@ -46,7 +46,7 @@ class ColoredFormatter(logging.Formatter):
 
 class TypClingoApp(App):
     """
-    The main application class for TypeClingo.
+    The main application class for typclingo.
     """
 
     lib: Library

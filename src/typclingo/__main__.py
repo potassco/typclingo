@@ -15,7 +15,7 @@ __all__ = ["typclingo_main"]
 
 def typclingo_main() -> None:
     """
-    Run the TypeClingo application.
+    Run the typclingo application.
     """
     lib = Library()
     enable_python(lib)
