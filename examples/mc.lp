@@ -1,9 +1,9 @@
 %*?
-type Bank <: left | right.
 type Group <: mis | can.
+type Bank <: left | right.
 type Time <: Number.
-type Action <: move(Amount,Amount).
 type Amount <: Number.
+type Action <: move(Amount,Amount).
 
 pred group(Group).
 pred bank(Bank).

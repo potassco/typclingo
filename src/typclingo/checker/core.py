@@ -285,8 +285,6 @@ class TypeChecker:
             td_rhs = self.spec.get_type_def(rhs.name)
             assert td_rhs.rel != TypeRelation.EQUAL
             if isinstance(lhs, TypeCons):
-                # NOTE: subtype/meet won't actually access the env here
-                # because neither lhs nor rhs can contain type variables
                 td_lhs = self.spec.get_type_def(lhs.name)
                 assert td_lhs.rel != TypeRelation.EQUAL
                 if self.reachable_supertype(rhs, lhs):
