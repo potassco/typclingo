@@ -36,3 +36,11 @@ _build
 _autosummary
 site
 logs
+
+# latex
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.pdf
+*.synctex.gz

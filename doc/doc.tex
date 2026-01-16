@@ -1,0 +1,99 @@
+\documentclass{amsart}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+\newcommand\meet{\mathrm{meet}}
+
+The meet computation in typclingo.
+
+Let $V$ be a set of \emph{type variables},
+$F$ be a set of \emph{function constructors}, and
+$T$ be a set of \emph{type constants}.
+
+The set $\mathcal{T}$ of \emph{type expressions} is the smallest set containing:
+\begin{itemize}
+	\item $\top$ (the top type)
+	\item $e$ for $e \in T \cup V$
+	\item $f(e_1,\dots,e_n)$ for $e_1,\dots,e_n \in \mathcal{T}$, $f \in F$, and $n \geq 0$ (function types)
+	\item $(e_1 \mid ... \mid e_n)$ for $e_1,\dots,e_n \in \mathcal{T}$ and $n \geq 0$ (type union)
+\end{itemize}
+
+We omit the parentheses for function types if the arity is zero
+and type unions when there is no risk of ambiguity.
+We define $\bot$ as the empty type union.
+
+A \emph{type specification} $S$ is a set of expressions $t \lessdot e$ or $t \doteq $
+such that $t \in T$ and $e \in \mathcal{T}$ where $e$ does not contain type variables.
+
+We assume that the type constants always contain $\mathbb{F}$, $\mathbb{N}$ and $\mathbb{S}$.
+Furthermore, type specifications always include:
+\begin{itemize}
+	\item $\mathbb{F} \lessdot \top$ (the type containing all function types)
+	\item $\mathbb{N} \lessdot \top$ (the type containing all numbers)
+	\item $\mathbb{S} \doteq \mathbb{F} \mid \mathbb{N}$
+\end{itemize}
+Finally, type specifications are assumed to not define recursive types
+and each type constant occurring on the right-hand side of a $\lessdot$ or $\doteq$ is defined exactly once.
+
+
+We let $\Sigma$ be the set of all \emph{type variable mappings} from type variables to type expressions.
+We assume that such a mapping $\sigma$ maps all variables in $V$ to some type expression.
+We denote a type mapping as a set of expressions of the form $v \mapsto e$ where $v \in V$ and $e \in \mathcal{T}$.
+A mapping maps type variables to $\mathbb{S}$ if not explicitly given.
+Given $\sigma_1, \sigma_2 \in \Sigma$, we let $\sigma_1 \sqcup \sigma_2$ be the mapping defined as:
+$(\sigma_1 \sqcup \sigma_2)(v) = \sigma_1(v) \mid \sigma_2(v)$ for all $v \in V$.
+
+Function $\mathrm{meet}_{S}: \mathcal{T} \times \mathcal{T} \times \Sigma \mapsto \mathcal{T} \times \Sigma$
+computes the \emph{meet} of two type expressions given a type variable mapping and a type specification $S$.
+The result is a new type expression and an updated type variable mapping.
+
+We define $\mathrm{meet}_{S}$ as follows:
+\begin{itemize}
+	\item $\meet_S(e,e,\sigma) = \meet_{S}(e, \top, \sigma) = \meet_{S}(\top, e, \sigma) = (e, \sigma)$
+	\item $\meet_S(t, e_1, \sigma) = \meet_S(e_1, t, \sigma) = \meet_S(e_1,e_2,\sigma)$\\
+	      where $t \doteq e_2 \in S$
+	\item $\meet_{S}(e, v, \sigma) = \meet_{S}(v, e, \sigma) = (e', \{v' \mapsto \sigma'(v') \mid v \neq v'\in V\} \cup \{v \mapsto e'\})$\\
+	      where $v \in V$ and  $(e', \sigma') = \meet_{S}(\sigma(v),e,\sigma)$
+	\item $\meet_S(e,e_1 \mid \dots \mid e_n, \sigma) = \meet_S(e_1 \mid \dots \mid e_n, e, \sigma) = (e_{i_1}' \mid \dots \mid e_{i_k}', \sigma_{i_1} \sqcup \dots \sqcup \sigma_{i_k})$ \\
+	      where $(e_i',\sigma_i) = \meet_S(e_i,e,\sigma)$
+	      and $i_j$ are all the indices such that $e_{i_j}' \neq \bot$
+	\item $\meet_S(f(e_1,\dots,e_n),\mathbb{F},\sigma) = (f(e_1,\dots,e_n), \sigma)$
+	\item $\meet_S(f(e_1,\dots,e_n),t,\sigma) = \begin{cases}
+			      (t,\sigma')    & e' \neq \bot     \\
+			      (\bot,\sigma') & \text{otherwise}
+		      \end{cases}$\\
+	      where $t \lessdot e \in S$, $t \neq \mathbb{N}$, $t \neq \mathbb{F}$, and $(e',\sigma') = \meet_S(f(e_1,\dots,e_n),e,\sigma)$
+	\item $\meet_S(f(e_1,\dots,e_n),f(g_1,\dots,g_n), \sigma) = \begin{cases}
+			      (f(h_1,\dots,h_n),\sigma_n) & \text{all } h_i \neq \bot \\
+			      (\bot,\sigma_n)             & \text{otherwise}
+		      \end{cases}$\\
+	      where $\sigma_0 = \sigma$ and $(h_i, \sigma_i) = \meet_S(e_i,g_i,\sigma_{i-1})$
+	\item $\meet_S(t_1,t_2,\sigma) = \begin{cases}
+			      (t_2, \sigma) & t_1 \text{ is a reachable super type of } t_2 \text{ in } S \\
+			      (t_1, \sigma) & t_2 \text{ is a reachable super type of } t_1 \text{ in } S \\
+			      (\bot,\sigma) & \text{otherwise}
+		      \end{cases}$\\
+	      where $t_1 \lessdot e_1, t_2 \lessdot e_2 \in S$
+	\item $\meet_S(e_1,e_2,\sigma) = (\bot,\sigma)$, otherwise
+\end{itemize}
+
+Note that the way type mappings are handled can lead to infinite recursion in general.
+However, we are only ever interested in solving meets
+for type expressions against type expressions that do not contain type variables,
+so no infinite recursion can occur in practice.
+
+To give an idea how the meet computation is applied in typclingo,
+let $p(X), q(X)$ be some rule body.
+We assume that we have some type specification $S$ containing type definitions $e_1$ and $e_2$
+for the arguments of $p$ and $q$, respectively.
+We can then map the atoms $p(X)$ and $q(X)$ to the type expressions $p(x)$ and $q(x)$ where $x$ is a type variable.
+
+To check that the body is well-typed,
+we compute $\mathrm{meet}_{S}(p(x), p(e_1),\emptyset) = (e,\sigma)$.
+In the next step, we compute $\mathrm{meet}_{S}(q(x), q(e_2),\sigma) = (e',\sigma')$.
+If both $e$ and $e'$ are not $\bot$,
+then the body is well-typed and the type of $X$ is given by $\sigma'(x)$.
+\end{document}
