@@ -125,7 +125,17 @@ class Parser:
         """
         if self.branch("("):
             lhs = self.parse_type()
-            self.consume(")")
+            if self.branch(","):
+                args = [lhs]
+                if not self.branch(")"):
+                    while True:
+                        args.append(self.parse_type())
+                        if self.branch(")"):
+                            break
+                        self.consume(",")
+                lhs = FunctionCons("", args)
+            else:
+                self.consume(")")
         elif name := self.branch_uid():
             lhs = TypeCons(name)
         else:

@@ -32,14 +32,10 @@ TODO:
 - Better diagnostics and more info about computed types.
   - Maybe compute union of predicate rules and give a summary of types used at
     the end.
-- Add support for more term types.
-  - Tuples are missing.
-  - Format strings are missing.
-- Add support for external functions.
-  - Should be easy but requires format spec extension with typing information for external
 - Maybe better support for pools.
   - The benefit might be to small to invest the effort.
 - Add support for typing theory atoms.
+- Arguments of format strings are currently ignored.
 """
 
 import logging
@@ -157,16 +153,28 @@ class ClingoChecker(TypeChecker):
                     else:
                         opts.append(FunctionCons(term.name, t_args))
             return self.simplify_type(UnionCons(opts))
+        if isinstance(term, ast.TermTuple):
+            opts: list[Type] = []
+            for args in term.pool:
+                t_args: list[Type] = []
+                if isinstance(args, ast.ArgumentTuple):
+                    for x in args.arguments:
+                        if isinstance(x, ast.Projection):
+                            t_args.append(SYMBOL)
+                        else:
+                            t_args.append(self.add_term(x))
+                    opts.append(FunctionCons("", t_args))
+                else:
+                    opts.append(self.add_term(args))
+            return self.simplify_type(UnionCons(opts))
         if isinstance(term, ast.TermSymbolic):
             return self.add_symbol(term.symbol, protect_pred)
 
-        assert isinstance(term, (ast.TermFormatString, ast.TermTuple))
-
-        # TODO:
-        # - implement format strings and tuples
-        # - maybe represent tuples as functions with an empty name
-        logger.error("unhandled term: %s", term)
-        return SYMBOL
+        assert isinstance(term, ast.TermFormatString)
+        for elem in term.elements:
+            if isinstance(elem, ast.FormatFieldExpression):
+                self.constraints.append((self.add_term(elem.left), SYMBOL))
+        return STRING
 
     def add_symbol(self, sym: Symbol, protect_pred: bool = False) -> Type:
         """
@@ -180,14 +188,13 @@ class ClingoChecker(TypeChecker):
             return INFIMUM
         if sym.type == SymbolType.Supremum:
             return SUPREMUM
-        if sym.type == SymbolType.Tuple:
-            raise NotImplementedError("tuple symbols are not supported yet")
-        assert sym.type == SymbolType.Function
+        assert sym.type in (SymbolType.Function, SymbolType.Tuple)
         args = []
-        if sym.arguments:
-            for arg in sym.arguments:
-                args.append(self.add_symbol(arg))
-        elif not protect_pred and sym.name in self.params:
+        for arg in sym.arguments:
+            args.append(self.add_symbol(arg))
+        if sym.type == SymbolType.Tuple:
+            return FunctionCons("", args)
+        if not protect_pred and not args and sym.name in self.params:
             return self.params[sym.name]
         return FunctionCons(sym.name, args)
 
@@ -415,8 +422,6 @@ def check_stm(spec: TypeSpec, params: ParamHolder, stm: ast.Statement) -> None:
         res = True
         for part in stm.elements:
             if prog := spec.get_prog(part.name, len(part.arguments)):
-                # TODO: check whether constants have to be substituted in parts
-                # statements
                 checker = ClingoChecker(spec, set(), {})
                 for arg, typ in zip(part.arguments, prog.args):
                     checker.constraints.append((checker.add_symbol(arg), typ))

@@ -62,6 +62,13 @@ __all__ = ["TypeChecker"]
 logger = logging.getLogger(__name__)
 
 
+def func_type(fun: FunctionCons):
+    """
+    Get the general type of a function term.
+    """
+    return TUPLE if fun.name == "" else FUNCTION
+
+
 class TypeChecker:
     """
     A type checker for ASP programs.
@@ -153,7 +160,7 @@ class TypeChecker:
             return all(self.subtype(x, rhs, env) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons) and isinstance(rhs, TypeCons):
-            if rhs in (TOP, FUNCTION):
+            if rhs in (TOP, func_type(lhs)):
                 return True
             td = self.spec.get_type_def(rhs.name)
             return td.rel == TypeRelation.EQUAL and self.subtype(lhs, td.type, env)
@@ -210,7 +217,7 @@ class TypeChecker:
             return any(self.reachable_supertype(x, rhs) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons):
-            return rhs == FUNCTION
+            return rhs == func_type(lhs)
 
         assert False
 
@@ -294,9 +301,9 @@ class TypeChecker:
                 return BOT
             assert isinstance(lhs, FunctionCons)
 
-            if rhs in (SYMBOL, FUNCTION, TOP):
+            if rhs in (SYMBOL, func_type(lhs), TOP):
                 return debug(lhs)
-            if rhs in (NUMBER, STRING, INFIMUM, SUPREMUM, TUPLE):
+            if rhs in (NUMBER, STRING, INFIMUM, SUPREMUM, TUPLE, FUNCTION, TUPLE):
                 return debug(BOT)
             if self.meet(lhs, td_rhs.type, env) != BOT:
                 return debug(rhs)

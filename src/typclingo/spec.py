@@ -80,21 +80,21 @@ class TypeVar:
 @dataclass
 class FunctionCons:
     """
-    A function type constructor.
+    A function or tuple type constructor.
 
     A function type constructor has a name and zero or more type arguments. It
     must be associated with a type constructor via a type definition.
 
-    # TODO
-    Maybe nesting of constructors shoudl be allowed here to write more compact
-    types? Currently, types definitions have to be flat but nesting types can
-    of course be represented via multiple definitions.
+    Tuples are also represented as function type constructors with an empty
+    name.
     """
 
     name: str
     args: list["Type"]
 
     def __str__(self) -> str:
+        if self.name == "" and len(self.args) == 1:
+            return f"({self.args[0]},)"
         if self.args:
             return f"{self.name}(" + ",".join(str(a) for a in self.args) + ")"
         return f"{self.name}"

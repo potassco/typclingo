@@ -2,7 +2,7 @@
 type Element <: Symbol.
 
 func gather(Element) -> Number.
-func sort() -> t(Number,Element).
+func sort() -> (Number,Element).
 
 pred p(Element).
 pred gather(Number).
@@ -32,4 +32,4 @@ p(s(f)).
 gather(1).
 gather(@gather(X)) :- p(X).
 
-enumerate(X,N) :- gather(1), t(X,N) = @sort().
+enumerate(X,N) :- gather(1), (X,N) = @sort().
