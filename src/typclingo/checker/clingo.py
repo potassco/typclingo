@@ -130,43 +130,43 @@ class ClingoChecker(TypeChecker):
             # - using the pool here is not the most useful way to implement this
             # - it might be better to unpool beforhand to ensure that each
             #   alternative is meaningful
-            opts: list[Type] = []
-            for args in term.pool:
-                t_args: list[Type] = []
-                for x in args.arguments:
+            opts_fun: list[Type] = []
+            for args_fun in term.pool:
+                t_args_fun: list[Type] = []
+                for x in args_fun.arguments:
                     if isinstance(x, ast.Projection):
-                        t_args.append(SYMBOL)
+                        t_args_fun.append(SYMBOL)
                     else:
-                        t_args.append(self.add_term(x))
+                        t_args_fun.append(self.add_term(x))
                 if term.external:
                     f_args: list[Type] = []
-                    if func := self.spec.get_func(term.name, len(t_args)):
+                    if func := self.spec.get_func(term.name, len(t_args_fun)):
                         f_args = func.args
-                        opts.append(func.result)
+                        opts_fun.append(func.result)
                     else:
-                        f_args = [SYMBOL] * len(t_args)
-                        opts.append(SYMBOL)
-                    self.constraints.extend(zip(t_args, f_args))
+                        f_args = [SYMBOL] * len(t_args_fun)
+                        opts_fun.append(SYMBOL)
+                    self.constraints.extend(zip(t_args_fun, f_args))
                 else:
-                    if not protect_pred and not t_args and term.name in self.params:
-                        opts.append(self.params[term.name])
+                    if not protect_pred and not t_args_fun and term.name in self.params:
+                        opts_fun.append(self.params[term.name])
                     else:
-                        opts.append(FunctionCons(term.name, t_args))
-            return self.simplify_type(UnionCons(opts))
+                        opts_fun.append(FunctionCons(term.name, t_args_fun))
+            return self.simplify_type(UnionCons(opts_fun))
         if isinstance(term, ast.TermTuple):
-            opts: list[Type] = []
-            for args in term.pool:
-                t_args: list[Type] = []
-                if isinstance(args, ast.ArgumentTuple):
-                    for x in args.arguments:
+            opts_tup: list[Type] = []
+            for args_tup in term.pool:
+                t_args_tup: list[Type] = []
+                if isinstance(args_tup, ast.ArgumentTuple):
+                    for x in args_tup.arguments:
                         if isinstance(x, ast.Projection):
-                            t_args.append(SYMBOL)
+                            t_args_tup.append(SYMBOL)
                         else:
-                            t_args.append(self.add_term(x))
-                    opts.append(FunctionCons("", t_args))
+                            t_args_tup.append(self.add_term(x))
+                    opts_tup.append(FunctionCons("", t_args_tup))
                 else:
-                    opts.append(self.add_term(args))
-            return self.simplify_type(UnionCons(opts))
+                    opts_tup.append(self.add_term(args_tup))
+            return self.simplify_type(UnionCons(opts_tup))
         if isinstance(term, ast.TermSymbolic):
             return self.add_symbol(term.symbol, protect_pred)
 

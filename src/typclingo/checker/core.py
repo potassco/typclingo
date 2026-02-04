@@ -62,7 +62,7 @@ __all__ = ["TypeChecker"]
 logger = logging.getLogger(__name__)
 
 
-def func_type(fun: FunctionCons):
+def func_type(fun: FunctionCons) -> TypeCons:
     """
     Get the general type of a function term.
     """
