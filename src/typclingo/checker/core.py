@@ -37,7 +37,6 @@ TODO:
 """
 
 import logging
-from functools import singledispatchmethod
 
 from ..spec import (
     BOT,
@@ -103,7 +102,7 @@ class TypeChecker:
             while n > 0:
                 nxt = []
                 for y in opts[1:]:
-                    if not self.subtype(y, opts[0], {}):
+                    if not self.subtype(y, opts[0], {}, set()):
                         nxt.append(y)
                     else:
                         n -= 1
@@ -133,8 +132,7 @@ class TypeChecker:
             return FunctionCons(t.name, [self.expand_type(x) for x in t.args])
         return t
 
-    @singledispatchmethod
-    def subtype(self, lhs: Type, rhs: Type, env: dict[str, Type]) -> bool:
+    def subtype(self, lhs: Type, rhs: Type, env: dict[str, Type], visited: set[tuple[int, int]]) -> bool:
         """
         Check whether lhs is a subtype of rhs.
 
@@ -144,6 +142,11 @@ class TypeChecker:
         A type var can however be a subtype of another type if it is associated
         with a subtype of that type in the environment.
         """
+        key = (id(lhs), id(rhs))
+        if key in visited:
+            return False
+        visited.add(key)
+
         if lhs == rhs:
             return True
 
@@ -151,25 +154,25 @@ class TypeChecker:
             return False
 
         if isinstance(lhs, TypeVar):
-            return self.subtype(env.get(lhs.name, SYMBOL), rhs, env)
+            return self.subtype(env.get(lhs.name, SYMBOL), rhs, env, visited)
 
         if isinstance(rhs, UnionCons):
-            return any(self.subtype(lhs, x, env) for x in rhs.opts)
+            return any(self.subtype(lhs, x, env, visited.copy()) for x in rhs.opts)
 
         if isinstance(lhs, UnionCons):
-            return all(self.subtype(x, rhs, env) for x in lhs.opts)
+            return all(self.subtype(x, rhs, env, visited.copy()) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons) and isinstance(rhs, TypeCons):
             if rhs in (TOP, func_type(lhs)):
                 return True
             td = self.spec.get_type_def(rhs.name)
-            return td.rel == TypeRelation.EQUAL and self.subtype(lhs, td.type, env)
+            return td.rel == TypeRelation.EQUAL and self.subtype(lhs, td.type, env, visited)
 
         if isinstance(lhs, FunctionCons) and isinstance(rhs, FunctionCons):
             return (
                 lhs.name == rhs.name
                 and len(lhs.args) == len(rhs.args)
-                and all(self.subtype(x, y, env) for x, y in zip(lhs.args, rhs.args))
+                and all(self.subtype(x, y, env, visited.copy()) for x, y in zip(lhs.args, rhs.args))
             )
 
         assert isinstance(lhs, TypeCons)
@@ -178,7 +181,7 @@ class TypeChecker:
         td_lhs = self.spec.get_type_def(lhs.name)
         if lhs != TOP:
             # check transitively first
-            if self.subtype(td_lhs.type, rhs, env):
+            if self.subtype(td_lhs.type, rhs, env, visited):
                 return True
 
             # if lhs is equal to its type definition, we already checked
@@ -192,12 +195,12 @@ class TypeChecker:
             if rhs in (TOP, lhs):
                 return True
             td_rhs = self.spec.get_type_def(rhs.name)
-            return td_rhs.rel == TypeRelation.EQUAL and self.subtype(lhs, td_rhs.type, env)
+            return td_rhs.rel == TypeRelation.EQUAL and self.subtype(lhs, td_rhs.type, env, visited)
 
         assert isinstance(rhs, (UnionCons, FunctionCons))
-        return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env) for x in rhs.opts)
+        return isinstance(rhs, UnionCons) and any(self.subtype(lhs, x, env, visited.copy()) for x in rhs.opts)
 
-    def reachable_supertype(self, lhs: Type, rhs: TypeCons) -> bool:
+    def reachable_supertype(self, lhs: Type, rhs: TypeCons, visited: set[str]) -> bool:
         """
         Check if we can reach rhs by unfolding type definitions in lhs.
         """
@@ -210,18 +213,21 @@ class TypeChecker:
         if isinstance(lhs, TypeCons):
             if lhs == rhs:
                 return True
+            if lhs.name in visited:
+                return False
+            visited.add(lhs.name)
             td_lhs = self.spec.get_type_def(lhs.name)
-            return self.reachable_supertype(td_lhs.type, rhs)
+            return self.reachable_supertype(td_lhs.type, rhs, visited)
 
         if isinstance(lhs, UnionCons):
-            return any(self.reachable_supertype(x, rhs) for x in lhs.opts)
+            return any(self.reachable_supertype(x, rhs, visited.copy()) for x in lhs.opts)
 
         if isinstance(lhs, FunctionCons):
             return rhs == func_type(lhs)
 
         assert False
 
-    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type]) -> Type:
+    def meet(self, lhs: Type, rhs: Type, env: dict[str, Type], visited: set[tuple[int, int]]) -> Type:
         """
         Compute the meet of two types.
 
@@ -234,6 +240,11 @@ class TypeChecker:
         with $X=Number. The type variable X is refined when computing the meet
         of Symbol and Number.
         """
+        key = (id(lhs), id(rhs))
+        if key in visited:
+            return BOT
+        visited.add(key)
+
         if logger.isEnabledFor(logging.DEBUG):
             slhs = str(lhs)
             srhs = str(rhs)
@@ -249,21 +260,22 @@ class TypeChecker:
             if rhs == TOP:
                 return debug(lhs)
             if td.rel == TypeRelation.EQUAL:
-                return debug(self.meet(lhs, td.type, env))
+                return debug(self.meet(lhs, td.type, env, visited))
 
         if isinstance(lhs, TypeCons):
             td = self.spec.get_type_def(lhs.name)
             if lhs == TOP:
                 return debug(rhs)
             if td.rel == TypeRelation.EQUAL:
-                return debug(self.meet(td.type, rhs, env))
+                return debug(self.meet(td.type, rhs, env, visited))
 
         if isinstance(rhs, UnionCons):
             opts = []
             sub = []
             for opt in rhs.opts:
                 sub.append(env.copy())
-                opts.append(self.simplify_type(self.meet(opt, lhs, sub[-1])))
+                branch_visited = visited.copy()
+                opts.append(self.simplify_type(self.meet(opt, lhs, sub[-1], branch_visited)))
                 if opts[-1] == BOT:
                     opts.pop()
                     sub.pop()
@@ -281,12 +293,12 @@ class TypeChecker:
 
         if isinstance(rhs, TypeVar):
             t_rhs = env.get(rhs.name, SYMBOL)
-            res = self.meet(lhs, t_rhs, env)
+            res = self.meet(lhs, t_rhs, env, visited)
             env[rhs.name] = res
             return debug(res)
 
         if isinstance(lhs, (TypeVar, UnionCons)):
-            return self.meet(rhs, lhs, env)
+            return self.meet(rhs, lhs, env, visited)
 
         if isinstance(rhs, TypeCons):
             td_rhs = self.spec.get_type_def(rhs.name)
@@ -294,9 +306,9 @@ class TypeChecker:
             if isinstance(lhs, TypeCons):
                 td_lhs = self.spec.get_type_def(lhs.name)
                 assert td_lhs.rel != TypeRelation.EQUAL
-                if self.reachable_supertype(rhs, lhs):
+                if self.reachable_supertype(rhs, lhs, set()):
                     return debug(rhs)
-                if self.reachable_supertype(lhs, rhs):
+                if self.reachable_supertype(lhs, rhs, set()):
                     return debug(lhs)
                 return BOT
             assert isinstance(lhs, FunctionCons)
@@ -305,17 +317,17 @@ class TypeChecker:
                 return debug(lhs)
             if rhs in (NUMBER, STRING, INFIMUM, SUPREMUM, TUPLE, FUNCTION, TUPLE):
                 return debug(BOT)
-            if self.meet(lhs, td_rhs.type, env) != BOT:
+            if self.meet(lhs, td_rhs.type, env, visited) != BOT:
                 return debug(rhs)
             return debug(BOT)
 
         if isinstance(lhs, TypeCons):
-            return self.meet(rhs, lhs, env)
+            return self.meet(rhs, lhs, env, visited)
 
         assert isinstance(lhs, FunctionCons) and isinstance(rhs, FunctionCons)
         if lhs.name != rhs.name or len(lhs.args) != len(rhs.args):
             return debug(BOT)
-        args = [self.meet(a, b, env) for a, b in zip(lhs.args, rhs.args)]
+        args = [self.meet(a, b, env, visited.copy()) for a, b in zip(lhs.args, rhs.args)]
         if any(a == BOT for a in args):
             return debug(BOT)
         return debug(FunctionCons(lhs.name, args))
@@ -329,7 +341,7 @@ class TypeChecker:
         res = True
         for lhs, rhs in self.constraints:
             logger.debug("  solving type constraint: %s ⊓ %s", lhs, rhs)
-            if self.simplify_type(self.meet(lhs, rhs, self.env)) == BOT:
+            if self.simplify_type(self.meet(lhs, rhs, self.env, set())) == BOT:
                 res = False
                 logger.error("unsolvable type constraints: %s = %s", lhs, rhs)
 

@@ -210,45 +210,6 @@ class Program:
         return f"prog {self.name}."
 
 
-class Graph:
-    """
-    A simple directed graph to check for cycles.
-    """
-
-    edges: dict[str, set[str]]
-
-    def __init__(self) -> None:
-        self.edges = {}
-
-    def add_edge(self, src: str, dst: str) -> None:
-        """
-        Add a directed edge from src to dst.
-        """
-        self.edges.setdefault(src, set()).add(dst)
-
-    def check_acyclic(self) -> None:
-        """
-        Check that the graph is acyclic.
-
-        This could be refined to provide all types involved in the cycle.
-        """
-        visited = set()
-        stack = set()
-
-        def visit(node: str) -> None:
-            if node in stack:
-                raise ValueError(f"Cycle detected in type definitions at '{node}'")
-            if node not in visited:
-                stack.add(node)
-                for neighbor in self.edges.get(node, []):
-                    visit(neighbor)
-                stack.remove(node)
-                visited.add(node)
-
-        for node in self.edges:
-            visit(node)
-
-
 @dataclass
 class TypeSpec:
     """
@@ -363,12 +324,8 @@ class TypeSpec:
         Check the type specification for consistency.
         """
 
-        graph = Graph()
-        parent = TOP.name
-
         @singledispatch
         def dispatch(t: Type) -> None:
-            print(f"type: {t}, {type(t)}")
             assert t
             raise NotImplementedError()
 
@@ -376,9 +333,6 @@ class TypeSpec:
         def _(t: TypeCons) -> None:
             if t.name not in self._types:
                 raise ValueError(f"Type '{t.name}' not defined")
-            # we skip symbol here because they are cyclically defined
-            if parent != TOP.name:
-                graph.add_edge(parent, t.name)
 
         @dispatch.register
         def _(t: UnionCons) -> None:
@@ -391,15 +345,10 @@ class TypeSpec:
                 dispatch(x)
 
         for td in self._types.values():
-            parent = td.name
             dispatch(td.type)
-
-        graph.check_acyclic()
 
         for pds in self._preds.values():
             for pd in pds:
-                # this avoids adding edges for predicates
-                parent = TOP.name
                 for x in pd.args:
                     dispatch(x)
 
