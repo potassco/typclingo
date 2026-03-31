@@ -240,11 +240,6 @@ class TypeChecker:
         with $X=Number. The type variable X is refined when computing the meet
         of Symbol and Number.
         """
-        key = (id(lhs), id(rhs))
-        if key in visited:
-            return BOT
-        visited.add(key)
-
         if logger.isEnabledFor(logging.DEBUG):
             slhs = str(lhs)
             srhs = str(rhs)
@@ -254,6 +249,14 @@ class TypeChecker:
         def debug(res: Type) -> Type:
             logger.debug("    %s ⊓ %s = %s", slhs, srhs, res)
             return res
+
+        if lhs == rhs:
+            return debug(lhs)
+
+        key = (id(lhs), id(rhs))
+        if key in visited:
+            return BOT
+        visited.add(key)
 
         if isinstance(rhs, TypeCons):
             td = self.spec.get_type_def(rhs.name)
