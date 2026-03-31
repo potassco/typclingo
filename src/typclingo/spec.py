@@ -319,6 +319,40 @@ class TypeSpec:
         """
         return self._funcs.get((name, arity), None)
 
+    def _is_inhabited(self, name: str, visited: set[str]) -> bool:
+        """
+        Check if a type has a base case (is inhabited).
+
+        A type is uninhabited if it only contains recursive references with no
+        base case to construct a value.
+        """
+        if name in visited:
+            return False
+        visited.add(name)
+        td = self.get_type_def(name)
+        if td.rel == TypeRelation.SUBTYPE:
+            return True
+        return self._has_base_case(td.type, name, visited)
+
+    def _has_base_case(self, t: Type, type_name: str, visited: set[str]) -> bool:
+        """
+        Check if a type expression contains a base case.
+        """
+        if isinstance(t, FunctionCons):
+            if len(t.args) == 0 and t.name != type_name:
+                return True
+            return any(self._has_base_case(arg, type_name, visited) for arg in t.args)
+
+        if isinstance(t, UnionCons):
+            return any(self._has_base_case(opt, type_name, visited) for opt in t.opts)
+
+        if isinstance(t, TypeCons):
+            if t.name == type_name:
+                return False
+            return self._is_inhabited(t.name, visited)
+
+        return False
+
     def check(self) -> None:
         """
         Check the type specification for consistency.
@@ -346,6 +380,10 @@ class TypeSpec:
 
         for td in self._types.values():
             dispatch(td.type)
+
+        for name in self._types:
+            if not self._is_inhabited(name, set()):
+                raise ValueError(f"Type '{name}' is uninhabited (no base case)")
 
         for pds in self._preds.values():
             for pd in pds:
