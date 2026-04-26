@@ -210,45 +210,6 @@ class Program:
         return f"prog {self.name}."
 
 
-class Graph:
-    """
-    A simple directed graph to check for cycles.
-    """
-
-    edges: dict[str, set[str]]
-
-    def __init__(self) -> None:
-        self.edges = {}
-
-    def add_edge(self, src: str, dst: str) -> None:
-        """
-        Add a directed edge from src to dst.
-        """
-        self.edges.setdefault(src, set()).add(dst)
-
-    def check_acyclic(self) -> None:
-        """
-        Check that the graph is acyclic.
-
-        This could be refined to provide all types involved in the cycle.
-        """
-        visited = set()
-        stack = set()
-
-        def visit(node: str) -> None:
-            if node in stack:
-                raise ValueError(f"Cycle detected in type definitions at '{node}'")
-            if node not in visited:
-                stack.add(node)
-                for neighbor in self.edges.get(node, []):
-                    visit(neighbor)
-                stack.remove(node)
-                visited.add(node)
-
-        for node in self.edges:
-            visit(node)
-
-
 @dataclass
 class TypeSpec:
     """
@@ -358,17 +319,47 @@ class TypeSpec:
         """
         return self._funcs.get((name, arity), None)
 
+    def _is_inhabited(self, name: str, visited: set[str]) -> bool:
+        """
+        Check if a type has a base case (is inhabited).
+
+        A type is uninhabited if it only contains recursive references with no
+        base case to construct a value.
+        """
+        if name in visited:
+            return False
+        visited.add(name)
+        td = self.get_type_def(name)
+        if td.rel == TypeRelation.SUBTYPE:
+            return True
+        return self._has_base_case(td.type, name, visited)
+
+    def _has_base_case(self, t: Type, type_name: str, visited: set[str]) -> bool:
+        """
+        Check if a type expression contains a base case.
+        """
+        if isinstance(t, FunctionCons):
+            if len(t.args) == 0 and t.name != type_name:
+                return True
+            return any(self._has_base_case(arg, type_name, visited) for arg in t.args)
+
+        if isinstance(t, UnionCons):
+            return any(self._has_base_case(opt, type_name, visited) for opt in t.opts)
+
+        if isinstance(t, TypeCons):
+            if t.name == type_name:
+                return False
+            return self._is_inhabited(t.name, visited)
+
+        return False
+
     def check(self) -> None:
         """
         Check the type specification for consistency.
         """
 
-        graph = Graph()
-        parent = TOP.name
-
         @singledispatch
         def dispatch(t: Type) -> None:
-            print(f"type: {t}, {type(t)}")
             assert t
             raise NotImplementedError()
 
@@ -376,9 +367,6 @@ class TypeSpec:
         def _(t: TypeCons) -> None:
             if t.name not in self._types:
                 raise ValueError(f"Type '{t.name}' not defined")
-            # we skip symbol here because they are cyclically defined
-            if parent != TOP.name:
-                graph.add_edge(parent, t.name)
 
         @dispatch.register
         def _(t: UnionCons) -> None:
@@ -391,15 +379,14 @@ class TypeSpec:
                 dispatch(x)
 
         for td in self._types.values():
-            parent = td.name
             dispatch(td.type)
 
-        graph.check_acyclic()
+        for name in self._types:
+            if not self._is_inhabited(name, set()):
+                raise ValueError(f"Type '{name}' is uninhabited (no base case)")
 
         for pds in self._preds.values():
             for pd in pds:
-                # this avoids adding edges for predicates
-                parent = TOP.name
                 for x in pd.args:
                     dispatch(x)
 
